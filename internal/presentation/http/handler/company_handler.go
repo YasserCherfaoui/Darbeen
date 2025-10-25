@@ -60,7 +60,7 @@ func (h *CompanyHandler) ListCompanies(c *gin.Context) {
 }
 
 func (h *CompanyHandler) GetCompany(c *gin.Context) {
-	companyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
 	if err != nil {
 		response.Error(c, errors.NewBadRequestError("invalid company id"))
 		return
@@ -82,7 +82,7 @@ func (h *CompanyHandler) UpdateCompany(c *gin.Context) {
 		return
 	}
 
-	companyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
 	if err != nil {
 		response.Error(c, errors.NewBadRequestError("invalid company id"))
 		return
@@ -110,7 +110,7 @@ func (h *CompanyHandler) AddUserToCompany(c *gin.Context) {
 		return
 	}
 
-	companyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
 	if err != nil {
 		response.Error(c, errors.NewBadRequestError("invalid company id"))
 		return
@@ -138,7 +138,7 @@ func (h *CompanyHandler) RemoveUserFromCompany(c *gin.Context) {
 		return
 	}
 
-	companyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
 	if err != nil {
 		response.Error(c, errors.NewBadRequestError("invalid company id"))
 		return

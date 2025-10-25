@@ -7,6 +7,8 @@ A modern ERP platform built with Domain-Driven Design (DDD) architecture using G
 - **User Management**: Complete user authentication and authorization
 - **Multi-Company Support**: Users can belong to multiple companies with different roles
 - **Subscription Management**: Flexible subscription plans (Free, Basic, Premium, Enterprise)
+- **Product Management**: Create and manage products with variants
+- **Inventory Management**: Track stock levels for product variants
 - **JWT Authentication**: Secure token-based authentication
 - **Role-Based Access Control**: Owner, Admin, Manager, and Employee roles
 
@@ -215,6 +217,72 @@ curl -X POST http://localhost:8080/api/v1/companies/1/users \
   }'
 ```
 
+### 6. Create a Product
+
+```bash
+curl -X POST http://localhost:8080/api/v1/companies/1/products \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "name": "T-Shirt",
+    "description": "Comfortable cotton t-shirt",
+    "sku": "TSHIRT-001",
+    "base_price": 20.00
+  }'
+```
+
+### 7. Create Product Variants
+
+```bash
+# Small Blue variant
+curl -X POST http://localhost:8080/api/v1/companies/1/products/1/variants \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "name": "Small Blue",
+    "sku": "TSHIRT-001-S-BLU",
+    "price": 20.00,
+    "stock": 50,
+    "attributes": {
+      "size": "S",
+      "color": "Blue"
+    }
+  }'
+
+# Large Red variant
+curl -X POST http://localhost:8080/api/v1/companies/1/products/1/variants \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "name": "Large Red",
+    "sku": "TSHIRT-001-L-RED",
+    "price": 22.00,
+    "stock": 30,
+    "attributes": {
+      "size": "L",
+      "color": "Red"
+    }
+  }'
+```
+
+### 8. List Products with Variants
+
+```bash
+curl -X GET http://localhost:8080/api/v1/companies/1/products?page=1&limit=20 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### 9. Update Stock
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/companies/1/products/1/variants/1/stock \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "stock": 75
+  }'
+```
+
 ## User Roles
 
 - **Owner**: Full control over company (cannot be removed)
@@ -238,6 +306,16 @@ curl -X POST http://localhost:8080/api/v1/companies/1/users \
 ### Companies
 - Company information
 - One-to-many relationship with subscriptions
+
+### Products
+- Product profiles with SKU, pricing, and descriptions
+- Many-to-many relationship with companies (company-scoped)
+- One-to-many relationship with product variants
+
+### Product Variants
+- Variant-specific attributes (size, color, etc.) stored as JSON
+- Individual pricing and stock levels
+- Flexible attribute system for any product type
 
 ### Subscriptions
 - Plan type, status, dates, and user limits

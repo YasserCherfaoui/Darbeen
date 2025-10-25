@@ -22,7 +22,7 @@ func NewSubscriptionHandler(subscriptionService *subscriptionApp.Service) *Subsc
 }
 
 func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
-	companyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
 	if err != nil {
 		response.Error(c, errors.NewBadRequestError("invalid company id"))
 		return
@@ -44,7 +44,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 		return
 	}
 
-	companyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
 	if err != nil {
 		response.Error(c, errors.NewBadRequestError("invalid company id"))
 		return

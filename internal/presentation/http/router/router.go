@@ -12,6 +12,7 @@ type Router struct {
 	userHandler         *handler.UserHandler
 	companyHandler      *handler.CompanyHandler
 	subscriptionHandler *handler.SubscriptionHandler
+	productHandler      *handler.ProductHandler
 	jwtManager          *security.JWTManager
 }
 
@@ -20,6 +21,7 @@ func NewRouter(
 	userHandler *handler.UserHandler,
 	companyHandler *handler.CompanyHandler,
 	subscriptionHandler *handler.SubscriptionHandler,
+	productHandler *handler.ProductHandler,
 	jwtManager *security.JWTManager,
 ) *Router {
 	return &Router{
@@ -27,6 +29,7 @@ func NewRouter(
 		userHandler:         userHandler,
 		companyHandler:      companyHandler,
 		subscriptionHandler: subscriptionHandler,
+		productHandler:      productHandler,
 		jwtManager:          jwtManager,
 	}
 }
@@ -62,14 +65,32 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 	{
 		companies.POST("", r.companyHandler.CreateCompany)
 		companies.GET("", r.companyHandler.ListCompanies)
-		companies.GET("/:id", r.companyHandler.GetCompany)
-		companies.PUT("/:id", r.companyHandler.UpdateCompany)
-		companies.POST("/:id/users", r.companyHandler.AddUserToCompany)
-		companies.DELETE("/:id/users/:userId", r.companyHandler.RemoveUserFromCompany)
+		companies.GET("/:companyId", r.companyHandler.GetCompany)
+		companies.PUT("/:companyId", r.companyHandler.UpdateCompany)
+		companies.POST("/:companyId/users", r.companyHandler.AddUserToCompany)
+		companies.DELETE("/:companyId/users/:userId", r.companyHandler.RemoveUserFromCompany)
 
 		// Subscription routes nested under company
-		companies.GET("/:id/subscription", r.subscriptionHandler.GetSubscription)
-		companies.PUT("/:id/subscription", r.subscriptionHandler.UpdateSubscription)
+		companies.GET("/:companyId/subscription", r.subscriptionHandler.GetSubscription)
+		companies.PUT("/:companyId/subscription", r.subscriptionHandler.UpdateSubscription)
+
+		// Product routes nested under company
+		companies.POST("/:companyId/products", r.productHandler.CreateProduct)
+		companies.GET("/:companyId/products", r.productHandler.ListProducts)
+		companies.GET("/:companyId/products/:productId", r.productHandler.GetProduct)
+		companies.PUT("/:companyId/products/:productId", r.productHandler.UpdateProduct)
+		companies.DELETE("/:companyId/products/:productId", r.productHandler.DeleteProduct)
+
+		// Product variant routes nested under products
+		companies.POST("/:companyId/products/:productId/variants", r.productHandler.CreateProductVariant)
+		companies.GET("/:companyId/products/:productId/variants", r.productHandler.ListProductVariants)
+		companies.GET("/:companyId/products/:productId/variants/:variantId", r.productHandler.GetProductVariant)
+		companies.PUT("/:companyId/products/:productId/variants/:variantId", r.productHandler.UpdateProductVariant)
+		companies.DELETE("/:companyId/products/:productId/variants/:variantId", r.productHandler.DeleteProductVariant)
+
+		// Stock management routes
+		companies.PUT("/:companyId/products/:productId/variants/:variantId/stock", r.productHandler.UpdateVariantStock)
+		companies.POST("/:companyId/products/:productId/variants/:variantId/stock/adjust", r.productHandler.AdjustVariantStock)
 	}
 
 	// Health check

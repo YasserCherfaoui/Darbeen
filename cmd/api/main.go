@@ -5,6 +5,7 @@ import (
 
 	"github.com/YasserCherfaoui/darween/internal/application/auth"
 	"github.com/YasserCherfaoui/darween/internal/application/company"
+	"github.com/YasserCherfaoui/darween/internal/application/product"
 	"github.com/YasserCherfaoui/darween/internal/application/subscription"
 	"github.com/YasserCherfaoui/darween/internal/application/user"
 	"github.com/YasserCherfaoui/darween/internal/infrastructure/persistence/migrations"
@@ -33,14 +34,17 @@ func main() {
 	}
 
 	// Run migrations
-	if err := migrations.AutoMigrate(db); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+	if cfg.Server.GinMode != "debug" {
+		if err := migrations.AutoMigrate(db); err != nil {
+			log.Fatalf("Failed to run migrations: %v", err)
+		}
 	}
 
 	// Initialize repositories
 	userRepo := postgres.NewUserRepository(db)
 	companyRepo := postgres.NewCompanyRepository(db)
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
+	productRepo := postgres.NewProductRepository(db)
 
 	// Initialize JWT manager
 	jwtManager := security.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
@@ -50,15 +54,17 @@ func main() {
 	userService := user.NewService(userRepo)
 	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
+	productService := product.NewService(productRepo, userRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	companyHandler := handler.NewCompanyHandler(companyService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+	productHandler := handler.NewProductHandler(productService)
 
 	// Initialize router
-	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, jwtManager)
+	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, jwtManager)
 
 	// Create Gin engine
 	engine := gin.Default()

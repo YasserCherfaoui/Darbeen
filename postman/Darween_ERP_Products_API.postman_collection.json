@@ -1,0 +1,403 @@
+{
+	"info": {
+		"_postman_id": "erp-platform-products",
+		"name": "Darween ERP - Products & Variants API",
+		"description": "Complete API collection for Products and Product Variants management in the Darween ERP platform",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password123\",\n  \"first_name\": \"Admin\",\n  \"last_name\": \"User\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "auth", "login"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Companies",
+			"item": [
+				{
+					"name": "Create Company",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My Company\",\n  \"code\": \"MYCO\",\n  \"description\": \"My company description\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies"]
+						}
+					}
+				},
+				{
+					"name": "List Companies",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Products",
+			"item": [
+				{
+					"name": "Create Product",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"T-Shirt\",\n  \"description\": \"Comfortable cotton t-shirt\",\n  \"sku\": \"TSHIRT-001\",\n  \"base_price\": 20.00\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products"]
+						}
+					}
+				},
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products?page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Product",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Update Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated T-Shirt\",\n  \"description\": \"Updated description\",\n  \"base_price\": 25.00\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Delete Product",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Product Variants",
+			"item": [
+				{
+					"name": "Create Product Variant",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Small Blue\",\n  \"sku\": \"TSHIRT-001-S-BLU\",\n  \"price\": 20.00,\n  \"stock\": 50,\n  \"attributes\": {\n    \"size\": \"S\",\n    \"color\": \"Blue\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants"]
+						}
+					}
+				},
+				{
+					"name": "List Product Variants",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants"]
+						}
+					}
+				},
+				{
+					"name": "Get Product Variant",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants/{{variant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants", "{{variant_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Update Product Variant",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Small Blue Updated\",\n  \"price\": 22.00,\n  \"stock\": 75,\n  \"attributes\": {\n    \"size\": \"S\",\n    \"color\": \"Blue\",\n    \"material\": \"Cotton\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants/{{variant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants", "{{variant_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Delete Product Variant",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants/{{variant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants", "{{variant_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Stock Management",
+			"item": [
+				{
+					"name": "Update Variant Stock",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"stock\": 100\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants/{{variant_id}}/stock",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants", "{{variant_id}}", "stock"]
+						}
+					}
+				},
+				{
+					"name": "Adjust Variant Stock",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 10\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/companies/{{company_id}}/products/{{product_id}}/variants/{{variant_id}}/stock/adjust",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "companies", "{{company_id}}", "products", "{{product_id}}", "variants", "{{variant_id}}", "stock", "adjust"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080"
+		},
+		{
+			"key": "jwt_token",
+			"value": "your_jwt_token_here"
+		},
+		{
+			"key": "company_id",
+			"value": "1"
+		},
+		{
+			"key": "product_id",
+			"value": "1"
+		},
+		{
+			"key": "variant_id",
+			"value": "1"
+		}
+	]
+}
