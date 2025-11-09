@@ -312,6 +312,77 @@ func (s *Service) DeleteFranchisePricing(userID, franchiseID, variantID uint) er
 	return nil
 }
 
+func (s *Service) BulkSetFranchisePricing(userID, franchiseID uint, req *BulkSetFranchisePricingRequest) (*BulkSetFranchisePricingResponse, error) {
+	franchise, err := s.franchiseRepo.FindByID(franchiseID)
+	if err != nil {
+		return nil, errors.NewNotFoundError("franchise not found")
+	}
+
+	// Only parent company owner/admin can set pricing
+	parentRole, _ := s.userRepo.FindUserRoleInCompany(userID, franchise.ParentCompanyID)
+	if parentRole == nil || (parentRole.Role != userDomain.RoleOwner && parentRole.Role != userDomain.RoleAdmin) {
+		return nil, errors.NewForbiddenError("only parent company owners and admins can set franchise pricing")
+	}
+
+	// Verify product exists and belongs to parent company
+	product, err := s.productRepo.FindProductByID(req.ProductID)
+	if err != nil {
+		return nil, errors.NewNotFoundError("product not found")
+	}
+
+	if product.CompanyID != franchise.ParentCompanyID {
+		return nil, errors.NewForbiddenError("product does not belong to parent company")
+	}
+
+	// Get all variants for the product
+	variants, err := s.productRepo.FindProductVariantsByProductID(req.ProductID)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to fetch product variants", err)
+	}
+
+	result := make([]*FranchisePricingResponse, 0, len(variants))
+	updatedCount := 0
+
+	// Set pricing for each variant
+	for _, variant := range variants {
+		// Check if pricing already exists
+		existingPricing, _ := s.franchiseRepo.FindPricing(franchiseID, variant.ID)
+
+		var pricing *franchiseDomain.FranchisePricing
+		if existingPricing != nil {
+			pricing = existingPricing
+			if req.RetailPrice != nil {
+				pricing.SetRetailPriceOverride(*req.RetailPrice)
+			}
+			if req.WholesalePrice != nil {
+				pricing.SetWholesalePriceOverride(*req.WholesalePrice)
+			}
+			if err := s.franchiseRepo.UpdatePricing(pricing); err != nil {
+				continue // Skip this variant on error
+			}
+		} else {
+			pricing = &franchiseDomain.FranchisePricing{
+				FranchiseID:      franchiseID,
+				ProductVariantID: variant.ID,
+				RetailPrice:      req.RetailPrice,
+				WholesalePrice:   req.WholesalePrice,
+				IsActive:         true,
+			}
+			if err := s.franchiseRepo.CreatePricing(pricing); err != nil {
+				continue // Skip this variant on error
+			}
+		}
+
+		result = append(result, s.buildFranchisePricingResponse(pricing, product, variant))
+		updatedCount++
+	}
+
+	return &BulkSetFranchisePricingResponse{
+		UpdatedCount: updatedCount,
+		Pricing:      result,
+	}, nil
+}
+
 func (s *Service) AddUserToFranchise(requestUserID, franchiseID uint, req *AddUserToFranchiseRequest) error {
 	franchise, err := s.franchiseRepo.FindByID(franchiseID)
 	if err != nil {

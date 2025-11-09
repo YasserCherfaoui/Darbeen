@@ -207,3 +207,39 @@ type BulkCreateProductVariantsResponse struct {
 	CreatedCount int                      `json:"created_count"`
 	Variants     []ProductVariantResponse `json:"variants"`
 }
+
+// Label Generation DTOs
+
+// LabelConfig holds configuration for label generation
+type LabelConfig struct {
+	WidthMM      *float64 `json:"width_mm,omitempty"`       // Label width in millimeters (default: 50.8 = 2 inches)
+	HeightMM     *float64 `json:"height_mm,omitempty"`      // Label height in millimeters (default: 25.4 = 1 inch)
+	MarginMM     *float64 `json:"margin_mm,omitempty"`      // Margin in millimeters (default: 2.0)
+	QRSizeMM     *float64 `json:"qr_size_mm,omitempty"`     // QR code size in millimeters (default: 20.0)
+	FontSize     *float64 `json:"font_size,omitempty"`      // Font size for text (default: 10.0)
+	LabelsPerRow *int     `json:"labels_per_row,omitempty"` // Number of labels per row for bulk (default: 3)
+}
+
+// GenerateLabelRequest is used for single label generation
+type GenerateLabelRequest struct {
+	Config *LabelConfig `json:"config,omitempty"` // Optional configuration, uses defaults if not provided
+}
+
+// VariantQuantity represents a variant with its print quantity
+type VariantQuantity struct {
+	VariantID uint `json:"variant_id" binding:"required"`
+	Quantity  int  `json:"quantity" binding:"required,min=1"`
+}
+
+// ProductQuantity represents a product with its print quantity
+type ProductQuantity struct {
+	ProductID uint `json:"product_id" binding:"required"`
+	Quantity  int  `json:"quantity" binding:"required,min=1"`
+}
+
+// GenerateBulkLabelsRequest is used for bulk label generation
+type GenerateBulkLabelsRequest struct {
+	Products []ProductQuantity `json:"products,omitempty"` // List of products with quantities
+	Variants []VariantQuantity `json:"variants,omitempty"` // List of variants with quantities
+	Config   *LabelConfig      `json:"config,omitempty"`   // Optional configuration
+}

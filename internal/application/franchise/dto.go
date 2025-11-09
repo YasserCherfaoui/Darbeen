@@ -26,6 +26,17 @@ type SetFranchisePricingRequest struct {
 	WholesalePrice   *float64 `json:"wholesale_price,omitempty"`
 }
 
+type BulkSetFranchisePricingRequest struct {
+	ProductID      uint     `json:"product_id" binding:"required"`
+	RetailPrice    *float64 `json:"retail_price,omitempty"`
+	WholesalePrice *float64 `json:"wholesale_price,omitempty"`
+}
+
+type BulkSetFranchisePricingResponse struct {
+	UpdatedCount int                         `json:"updated_count"`
+	Pricing      []*FranchisePricingResponse `json:"pricing"`
+}
+
 type InitializeFranchiseInventoryRequest struct {
 	// Empty for now - initializes with zero stock
 }

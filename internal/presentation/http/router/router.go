@@ -16,6 +16,7 @@ type Router struct {
 	supplierHandler     *handler.SupplierHandler
 	inventoryHandler    *handler.InventoryHandler
 	franchiseHandler    *handler.FranchiseHandler
+	posHandler          *handler.POSHandler
 	jwtManager          *security.JWTManager
 }
 
@@ -28,6 +29,7 @@ func NewRouter(
 	supplierHandler *handler.SupplierHandler,
 	inventoryHandler *handler.InventoryHandler,
 	franchiseHandler *handler.FranchiseHandler,
+	posHandler *handler.POSHandler,
 	jwtManager *security.JWTManager,
 ) *Router {
 	return &Router{
@@ -39,6 +41,7 @@ func NewRouter(
 		supplierHandler:     supplierHandler,
 		inventoryHandler:    inventoryHandler,
 		franchiseHandler:    franchiseHandler,
+		posHandler:          posHandler,
 		jwtManager:          jwtManager,
 	}
 }
@@ -98,6 +101,11 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.PUT("/:companyId/products/:productId/variants/:variantId", r.productHandler.UpdateProductVariant)
 		companies.DELETE("/:companyId/products/:productId/variants/:variantId", r.productHandler.DeleteProductVariant)
 
+		// Label generation routes for products and variants
+		companies.GET("/:companyId/products/:productId/label", r.productHandler.GenerateProductLabel)
+		companies.GET("/:companyId/products/:productId/variants/:variantId/label", r.productHandler.GenerateVariantLabel)
+		companies.POST("/:companyId/products/labels/bulk", r.productHandler.GenerateBulkLabels)
+
 		// Supplier routes nested under company
 		companies.POST("/:companyId/suppliers", r.supplierHandler.CreateSupplier)
 		companies.GET("/:companyId/suppliers", r.supplierHandler.ListSuppliers)
@@ -112,6 +120,29 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 
 		// Inventory routes
 		companies.GET("/:companyId/inventory", r.inventoryHandler.GetCompanyInventory)
+		companies.POST("/:companyId/inventory/initialize", r.inventoryHandler.InitializeCompanyInventory)
+
+		// POS routes
+		companies.POST("/:companyId/pos/customers", r.posHandler.CreateCustomer)
+		companies.GET("/:companyId/pos/customers", r.posHandler.ListCustomers)
+		companies.GET("/:companyId/pos/customers/:customerId", r.posHandler.GetCustomer)
+		companies.PUT("/:companyId/pos/customers/:customerId", r.posHandler.UpdateCustomer)
+		companies.DELETE("/:companyId/pos/customers/:customerId", r.posHandler.DeleteCustomer)
+
+		companies.POST("/:companyId/pos/sales", r.posHandler.CreateSale)
+		companies.GET("/:companyId/pos/sales", r.posHandler.ListSales)
+		companies.GET("/:companyId/pos/sales/:saleId", r.posHandler.GetSale)
+		companies.POST("/:companyId/pos/sales/:saleId/payments", r.posHandler.AddPayment)
+		companies.POST("/:companyId/pos/sales/:saleId/refund", r.posHandler.ProcessRefund)
+
+		companies.GET("/:companyId/pos/refunds", r.posHandler.ListRefunds)
+
+		companies.POST("/:companyId/pos/cash-drawer/open", r.posHandler.OpenCashDrawer)
+		companies.GET("/:companyId/pos/cash-drawer/active", r.posHandler.GetActiveCashDrawer)
+		companies.PUT("/:companyId/pos/cash-drawer/:drawerId/close", r.posHandler.CloseCashDrawer)
+		companies.GET("/:companyId/pos/cash-drawer", r.posHandler.ListCashDrawers)
+
+		companies.POST("/:companyId/pos/reports/sales", r.posHandler.GetSalesReport)
 	}
 
 	// Franchise-specific routes
@@ -123,9 +154,17 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		franchises.GET("/:franchiseId/inventory", r.inventoryHandler.GetFranchiseInventory)
 		franchises.GET("/:franchiseId/pricing", r.franchiseHandler.GetFranchisePricing)
 		franchises.POST("/:franchiseId/pricing", r.franchiseHandler.SetFranchisePricing)
+		franchises.POST("/:franchiseId/pricing/bulk", r.franchiseHandler.BulkSetFranchisePricing)
 		franchises.DELETE("/:franchiseId/pricing/:variantId", r.franchiseHandler.DeleteFranchisePricing)
 		franchises.POST("/:franchiseId/users", r.franchiseHandler.AddUserToFranchise)
 		franchises.DELETE("/:franchiseId/users/:userId", r.franchiseHandler.RemoveUserFromFranchise)
+
+		// Franchise POS routes
+		franchises.GET("/:franchiseId/pos/sales", r.posHandler.ListFranchiseSales)
+		franchises.GET("/:franchiseId/pos/refunds", r.posHandler.ListFranchiseRefunds)
+		franchises.GET("/:franchiseId/pos/cash-drawer/active", r.posHandler.GetActiveFranchiseCashDrawer)
+		franchises.GET("/:franchiseId/pos/cash-drawer", r.posHandler.ListFranchiseCashDrawers)
+		franchises.POST("/:franchiseId/pos/reports/sales", r.posHandler.GetFranchiseSalesReport)
 	}
 
 	// Inventory routes

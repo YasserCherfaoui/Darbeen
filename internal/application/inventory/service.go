@@ -334,6 +334,67 @@ func (s *Service) GetInventoryMovements(inventoryID uint, limit int) ([]*Invento
 	return result, nil
 }
 
+func (s *Service) InitializeCompanyInventory(userID, companyID uint) error {
+	// Verify company exists and user has access
+	_, err := s.companyRepo.FindByID(companyID)
+	if err != nil {
+		return errors.NewNotFoundError("company not found")
+	}
+
+	role, err := s.userRepo.FindUserRoleInCompany(userID, companyID)
+	if err != nil || (role.Role != userDomain.RoleOwner && role.Role != userDomain.RoleAdmin) {
+		return errors.NewForbiddenError("only owners and admins can initialize company inventory")
+	}
+
+	// Get all products from company
+	products, _, err := s.productRepo.FindProductsByCompanyID(companyID, 1, 1000)
+	if err != nil {
+		return errors.NewInternalError("failed to fetch products", err)
+	}
+
+	// Create inventory records for all variants
+	for _, product := range products {
+		variants, err := s.productRepo.FindProductVariantsByProductID(product.ID)
+		if err != nil {
+			continue
+		}
+
+		for _, variant := range variants {
+			// Check if inventory already exists
+			existing, _ := s.inventoryRepo.FindByVariantAndCompany(variant.ID, companyID)
+			if existing == nil {
+				newInventory := &inventory.Inventory{
+					ProductVariantID: variant.ID,
+					CompanyID:        &companyID,
+					FranchiseID:      nil,
+					Stock:            0,
+					ReservedStock:    0,
+					IsActive:         true,
+				}
+
+				if err := s.inventoryRepo.Create(newInventory); err != nil {
+					// Log error but continue
+					continue
+				}
+
+				// Log initial movement
+				movement := &inventory.InventoryMovement{
+					InventoryID:   newInventory.ID,
+					MovementType:  inventory.MovementTypeAdjustment,
+					Quantity:      0,
+					PreviousStock: 0,
+					NewStock:      0,
+					Notes:         stringPtr("Initialized from catalog"),
+					CreatedByID:   userID,
+				}
+				s.inventoryRepo.CreateMovement(movement)
+			}
+		}
+	}
+
+	return nil
+}
+
 // Helper methods
 
 func (s *Service) verifyInventoryAccess(userID uint, inv *inventory.Inventory) error {
@@ -374,8 +435,27 @@ func (s *Service) buildInventoryResponse(inv *inventory.Inventory) (*InventoryRe
 		UpdatedAt:        inv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	// TODO: Load and populate variant details from productRepo if needed
-	// TODO: Load and populate franchise details if franchise inventory
+	// Load and populate variant details
+	variant, err := s.productRepo.FindProductVariantByID(inv.ProductVariantID)
+	if err == nil {
+		response.VariantName = variant.Name
+		response.VariantSKU = variant.SKU
+		response.ProductID = variant.ProductID
+
+		// Load and populate product details
+		product, err := s.productRepo.FindProductByID(variant.ProductID)
+		if err == nil {
+			response.ProductName = product.Name
+		}
+	}
+
+	// Load and populate franchise details if franchise inventory
+	if inv.FranchiseID != nil {
+		franchise, err := s.franchiseRepo.FindByID(*inv.FranchiseID)
+		if err == nil {
+			response.FranchiseName = franchise.Name
+		}
+	}
 
 	return response, nil
 }

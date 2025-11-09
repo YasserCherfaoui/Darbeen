@@ -277,6 +277,34 @@ func (h *FranchiseHandler) RemoveUserFromFranchise(c *gin.Context) {
 	response.SuccessWithMessage(c, http.StatusOK, "User removed from franchise successfully", nil)
 }
 
+func (h *FranchiseHandler) BulkSetFranchisePricing(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	franchiseID, err := strconv.ParseUint(c.Param("franchiseId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid franchise id"))
+		return
+	}
+
+	var req franchiseApp.BulkSetFranchisePricingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.franchiseService.BulkSetFranchisePricing(userID, uint(franchiseID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, "Franchise pricing set successfully", result)
+}
+
 
 
 

@@ -375,3 +375,125 @@ func (h *ProductHandler) BulkCreateProductVariants(c *gin.Context) {
 
 	response.SuccessWithMessage(c, http.StatusCreated, "Product variants created successfully", result)
 }
+
+// Label generation endpoints
+
+// GenerateProductLabel generates a label for a single product
+func (h *ProductHandler) GenerateProductLabel(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid product id"))
+		return
+	}
+
+	// Parse optional configuration from query params
+	var req productApp.GenerateLabelRequest
+	if c.ContentType() == "application/json" {
+		c.ShouldBindJSON(&req)
+	}
+
+	pdfData, filename, err := h.productService.GenerateProductLabel(userID, uint(companyID), uint(productID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Set headers for PDF download
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Length", strconv.Itoa(len(pdfData)))
+
+	c.Data(http.StatusOK, "application/pdf", pdfData)
+}
+
+// GenerateVariantLabel generates a label for a single product variant
+func (h *ProductHandler) GenerateVariantLabel(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid product id"))
+		return
+	}
+
+	variantID, err := strconv.ParseUint(c.Param("variantId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid variant id"))
+		return
+	}
+
+	// Parse optional configuration from query params
+	var req productApp.GenerateLabelRequest
+	if c.ContentType() == "application/json" {
+		c.ShouldBindJSON(&req)
+	}
+
+	pdfData, filename, err := h.productService.GenerateVariantLabel(userID, uint(companyID), uint(productID), uint(variantID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Set headers for PDF download
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Length", strconv.Itoa(len(pdfData)))
+
+	c.Data(http.StatusOK, "application/pdf", pdfData)
+}
+
+// GenerateBulkLabels generates labels for multiple products and/or variants
+func (h *ProductHandler) GenerateBulkLabels(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	var req productApp.GenerateBulkLabelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	pdfData, filename, err := h.productService.GenerateBulkLabels(userID, uint(companyID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Set headers for PDF download
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Length", strconv.Itoa(len(pdfData)))
+
+	c.Data(http.StatusOK, "application/pdf", pdfData)
+}

@@ -6,6 +6,7 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
 	"github.com/YasserCherfaoui/darween/internal/domain/supplier"
 	"github.com/YasserCherfaoui/darween/internal/domain/user"
+	"github.com/YasserCherfaoui/darween/internal/infrastructure/label"
 	"github.com/YasserCherfaoui/darween/pkg/errors"
 )
 
@@ -537,4 +538,190 @@ func (s *Service) validateSupplier(supplierID, companyID uint) error {
 		return errors.NewValidationError("supplier is not active")
 	}
 	return nil
+}
+
+// Label generation methods
+
+// buildLabelConfig creates label config from request or uses defaults
+func buildLabelConfig(reqConfig *LabelConfig) label.LabelConfig {
+	config := label.DefaultLabelConfig()
+
+	if reqConfig != nil {
+		if reqConfig.WidthMM != nil {
+			config.WidthMM = *reqConfig.WidthMM
+		}
+		if reqConfig.HeightMM != nil {
+			config.HeightMM = *reqConfig.HeightMM
+		}
+		if reqConfig.MarginMM != nil {
+			config.MarginMM = *reqConfig.MarginMM
+		}
+		if reqConfig.QRSizeMM != nil {
+			config.QRSizeMM = *reqConfig.QRSizeMM
+		}
+		if reqConfig.FontSize != nil {
+			config.FontSize = *reqConfig.FontSize
+		}
+		if reqConfig.LabelsPerRow != nil {
+			config.LabelsPerRow = *reqConfig.LabelsPerRow
+		}
+	}
+
+	return config
+}
+
+// GenerateProductLabel generates a label for a single product
+func (s *Service) GenerateProductLabel(userID, companyID, productID uint, req *GenerateLabelRequest) ([]byte, string, error) {
+	// Check user authorization
+	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
+		return nil, "", err
+	}
+
+	// Get product
+	prod, err := s.productRepo.FindProductByIDAndCompany(productID, companyID)
+	if err != nil {
+		return nil, "", errors.NewNotFoundError("product not found")
+	}
+
+	// Build label config
+	config := buildLabelConfig(nil)
+	if req != nil {
+		config = buildLabelConfig(req.Config)
+	}
+
+	// Generate label
+	generator := label.NewLabelGenerator(config)
+	pdfData, err := generator.GenerateSingleLabel(prod.SKU)
+	if err != nil {
+		return nil, "", errors.NewInternalError("failed to generate label", err)
+	}
+
+	filename := "label-" + prod.SKU + ".pdf"
+	return pdfData, filename, nil
+}
+
+// GenerateVariantLabel generates a label for a single product variant
+func (s *Service) GenerateVariantLabel(userID, companyID, productID, variantID uint, req *GenerateLabelRequest) ([]byte, string, error) {
+	// Check user authorization
+	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
+		return nil, "", err
+	}
+
+	// Verify product exists and belongs to company
+	_, err := s.productRepo.FindProductByIDAndCompany(productID, companyID)
+	if err != nil {
+		return nil, "", errors.NewNotFoundError("product not found")
+	}
+
+	// Get variant
+	variant, err := s.productRepo.FindProductVariantByIDAndProduct(variantID, productID)
+	if err != nil {
+		return nil, "", errors.NewNotFoundError("product variant not found")
+	}
+
+	// Build label config
+	config := buildLabelConfig(nil)
+	if req != nil {
+		config = buildLabelConfig(req.Config)
+	}
+
+	// Generate label
+	generator := label.NewLabelGenerator(config)
+	pdfData, err := generator.GenerateSingleLabel(variant.SKU)
+	if err != nil {
+		return nil, "", errors.NewInternalError("failed to generate label", err)
+	}
+
+	filename := "label-" + variant.SKU + ".pdf"
+	return pdfData, filename, nil
+}
+
+// GenerateBulkLabels generates labels for multiple products and/or variants with quantities
+func (s *Service) GenerateBulkLabels(userID, companyID uint, req *GenerateBulkLabelsRequest) ([]byte, string, error) {
+	// Check user authorization
+	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
+		return nil, "", err
+	}
+
+	// Validate request
+	if len(req.Products) == 0 && len(req.Variants) == 0 {
+		return nil, "", errors.NewValidationError("at least one product or variant is required")
+	}
+
+	// Collect label data
+	var labelDataList []label.LabelData
+
+	// Process products with quantities
+	for _, productQty := range req.Products {
+		prod, err := s.productRepo.FindProductByIDAndCompany(productQty.ProductID, companyID)
+		if err != nil {
+			return nil, "", errors.NewNotFoundError("product not found")
+		}
+		
+		// Add label for each quantity
+		for i := 0; i < productQty.Quantity; i++ {
+			labelDataList = append(labelDataList, label.LabelData{
+				SKU:  prod.SKU,
+				Name: prod.Name,
+			})
+		}
+	}
+
+	// Process variants with quantities
+	for _, variantQty := range req.Variants {
+		// Find which product this variant belongs to
+		variant, err := s.findVariantByID(variantQty.VariantID, companyID)
+		if err != nil {
+			return nil, "", err
+		}
+		
+		// Add label for each quantity
+		for i := 0; i < variantQty.Quantity; i++ {
+			labelDataList = append(labelDataList, label.LabelData{
+				SKU:  variant.SKU,
+				Name: variant.Name,
+			})
+		}
+	}
+
+	if len(labelDataList) == 0 {
+		return nil, "", errors.NewValidationError("no valid products or variants found")
+	}
+
+	// Build label config
+	config := buildLabelConfig(req.Config)
+
+	// Generate bulk labels
+	generator := label.NewLabelGenerator(config)
+	pdfData, err := generator.GenerateBulkLabels(labelDataList)
+	if err != nil {
+		return nil, "", errors.NewInternalError("failed to generate bulk labels", err)
+	}
+
+	filename := "labels-bulk.pdf"
+	return pdfData, filename, nil
+}
+
+// Helper function to find variant by ID across all products in a company
+func (s *Service) findVariantByID(variantID, companyID uint) (*product.ProductVariant, error) {
+	// Get all products for this company (we'll need to optimize this if the product list is large)
+	products, _, err := s.productRepo.FindProductsByCompanyID(companyID, 1, 10000)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to search for variant", err)
+	}
+
+	// Search for the variant in all products
+	for _, prod := range products {
+		variants, err := s.productRepo.FindProductVariantsByProductID(prod.ID)
+		if err != nil {
+			continue
+		}
+		for _, v := range variants {
+			if v.ID == variantID {
+				return v, nil
+			}
+		}
+	}
+
+	return nil, errors.NewNotFoundError("variant not found in this company")
 }

@@ -220,6 +220,28 @@ func (h *InventoryHandler) GetInventoryMovements(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
+func (h *InventoryHandler) InitializeCompanyInventory(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	err = h.inventoryService.InitializeCompanyInventory(userID, uint(companyID))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, "Company inventory initialized successfully", nil)
+}
+
 
 
 

@@ -6,6 +6,7 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/domain/company"
 	"github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	"github.com/YasserCherfaoui/darween/internal/domain/inventory"
+	"github.com/YasserCherfaoui/darween/internal/domain/pos"
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
 	"github.com/YasserCherfaoui/darween/internal/domain/subscription"
 	"github.com/YasserCherfaoui/darween/internal/domain/supplier"
@@ -30,6 +31,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&inventory.Inventory{},
 		&inventory.InventoryMovement{},
 		&franchise.FranchisePricing{},
+		&pos.Customer{},
+		&pos.Sale{},
+		&pos.SaleItem{},
+		&pos.Payment{},
+		&pos.CashDrawer{},
+		&pos.CashDrawerTransaction{},
+		&pos.Refund{},
 	)
 
 	if err != nil {

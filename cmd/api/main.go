@@ -7,6 +7,7 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/application/company"
 	"github.com/YasserCherfaoui/darween/internal/application/franchise"
 	"github.com/YasserCherfaoui/darween/internal/application/inventory"
+	"github.com/YasserCherfaoui/darween/internal/application/pos"
 	"github.com/YasserCherfaoui/darween/internal/application/product"
 	"github.com/YasserCherfaoui/darween/internal/application/subscription"
 	"github.com/YasserCherfaoui/darween/internal/application/supplier"
@@ -49,6 +50,15 @@ func main() {
 	supplierRepo := postgres.NewSupplierRepository(db)
 	franchiseRepo := postgres.NewFranchiseRepository(db)
 	inventoryRepo := postgres.NewInventoryRepository(db)
+	
+	// Initialize POS repositories
+	customerRepo := postgres.NewCustomerRepository(db)
+	saleRepo := postgres.NewSaleRepository(db)
+	saleItemRepo := postgres.NewSaleItemRepository(db)
+	paymentRepo := postgres.NewPaymentRepository(db)
+	cashDrawerRepo := postgres.NewCashDrawerRepository(db)
+	cashDrawerTransactionRepo := postgres.NewCashDrawerTransactionRepository(db)
+	refundRepo := postgres.NewRefundRepository(db)
 
 	// Initialize JWT manager
 	jwtManager := security.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
@@ -62,6 +72,7 @@ func main() {
 	supplierService := supplier.NewService(supplierRepo, userRepo)
 	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo)
 	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo)
+	posService := pos.NewService(customerRepo, saleRepo, saleItemRepo, paymentRepo, cashDrawerRepo, cashDrawerTransactionRepo, refundRepo, userRepo, inventoryRepo, inventoryRepo, productRepo, db)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -72,9 +83,10 @@ func main() {
 	supplierHandler := handler.NewSupplierHandler(supplierService)
 	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 	franchiseHandler := handler.NewFranchiseHandler(franchiseService)
+	posHandler := handler.NewPOSHandler(posService)
 
 	// Initialize router
-	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, jwtManager)
+	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, posHandler, jwtManager)
 
 	// Create Gin engine
 	engine := gin.Default()

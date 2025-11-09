@@ -35,6 +35,8 @@ type ReleaseStockRequest struct {
 type InventoryResponse struct {
 	ID               uint   `json:"id"`
 	ProductVariantID uint   `json:"product_variant_id"`
+	ProductID        uint   `json:"product_id,omitempty"`
+	ProductName      string `json:"product_name,omitempty"`
 	VariantName      string `json:"variant_name,omitempty"`
 	VariantSKU       string `json:"variant_sku,omitempty"`
 	CompanyID        *uint  `json:"company_id,omitempty"`
