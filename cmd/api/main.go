@@ -9,6 +9,7 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/application/inventory"
 	"github.com/YasserCherfaoui/darween/internal/application/product"
 	"github.com/YasserCherfaoui/darween/internal/application/subscription"
+	"github.com/YasserCherfaoui/darween/internal/application/supplier"
 	"github.com/YasserCherfaoui/darween/internal/application/user"
 	"github.com/YasserCherfaoui/darween/internal/infrastructure/persistence/migrations"
 	"github.com/YasserCherfaoui/darween/internal/infrastructure/persistence/postgres"
@@ -45,6 +46,7 @@ func main() {
 	companyRepo := postgres.NewCompanyRepository(db)
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
 	productRepo := postgres.NewProductRepository(db)
+	supplierRepo := postgres.NewSupplierRepository(db)
 	franchiseRepo := postgres.NewFranchiseRepository(db)
 	inventoryRepo := postgres.NewInventoryRepository(db)
 
@@ -56,7 +58,8 @@ func main() {
 	userService := user.NewService(userRepo)
 	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
-	productService := product.NewService(productRepo, userRepo)
+	productService := product.NewService(productRepo, userRepo, supplierRepo)
+	supplierService := supplier.NewService(supplierRepo, userRepo)
 	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo)
 	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo)
 
@@ -66,11 +69,12 @@ func main() {
 	companyHandler := handler.NewCompanyHandler(companyService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	productHandler := handler.NewProductHandler(productService)
+	supplierHandler := handler.NewSupplierHandler(supplierService)
 	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 	franchiseHandler := handler.NewFranchiseHandler(franchiseService)
 
 	// Initialize router
-	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, inventoryHandler, franchiseHandler, jwtManager)
+	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, jwtManager)
 
 	// Create Gin engine
 	engine := gin.Default()

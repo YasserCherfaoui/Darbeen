@@ -4,19 +4,22 @@ import (
 	"encoding/json"
 
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
+	"github.com/YasserCherfaoui/darween/internal/domain/supplier"
 	"github.com/YasserCherfaoui/darween/internal/domain/user"
 	"github.com/YasserCherfaoui/darween/pkg/errors"
 )
 
 type Service struct {
-	productRepo product.Repository
-	userRepo    user.Repository
+	productRepo  product.Repository
+	userRepo     user.Repository
+	supplierRepo supplier.Repository
 }
 
-func NewService(productRepo product.Repository, userRepo user.Repository) *Service {
+func NewService(productRepo product.Repository, userRepo user.Repository, supplierRepo supplier.Repository) *Service {
 	return &Service{
-		productRepo: productRepo,
-		userRepo:    userRepo,
+		productRepo:  productRepo,
+		userRepo:     userRepo,
+		supplierRepo: supplierRepo,
 	}
 }
 
@@ -25,6 +28,13 @@ func (s *Service) CreateProduct(userID, companyID uint, req *CreateProductReques
 	// Check user authorization
 	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
 		return nil, err
+	}
+
+	// Validate supplier if provided
+	if req.SupplierID != nil {
+		if err := s.validateSupplier(*req.SupplierID, companyID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Check if SKU already exists in company
@@ -92,6 +102,13 @@ func (s *Service) UpdateProduct(userID, companyID, productID uint, req *UpdatePr
 		return nil, errors.NewNotFoundError("product not found")
 	}
 
+	// Validate supplier if provided
+	if req.SupplierID != nil {
+		if err := s.validateSupplier(*req.SupplierID, companyID); err != nil {
+			return nil, err
+		}
+	}
+
 	// Check SKU uniqueness if SKU is being changed
 	if req.SKU != "" && req.SKU != existingProduct.SKU {
 		skuProduct, _ := s.productRepo.FindProductBySKUAndCompany(req.SKU, companyID)
@@ -113,6 +130,12 @@ func (s *Service) UpdateProduct(userID, companyID, productID uint, req *UpdatePr
 	}
 	if req.BaseWholesalePrice != nil && *req.BaseWholesalePrice >= 0 {
 		existingProduct.BaseWholesalePrice = *req.BaseWholesalePrice
+	}
+	if req.SupplierID != nil {
+		existingProduct.SupplierID = req.SupplierID
+	}
+	if req.SupplierCost != nil {
+		existingProduct.SupplierCost = req.SupplierCost
 	}
 	if req.IsActive != nil {
 		existingProduct.IsActive = *req.IsActive
@@ -502,4 +525,16 @@ func normalizeForSKU(value string) string {
 		}
 	}
 	return normalized
+}
+
+// Helper function to validate supplier
+func (s *Service) validateSupplier(supplierID, companyID uint) error {
+	sup, err := s.supplierRepo.FindSupplierByIDAndCompany(supplierID, companyID)
+	if err != nil {
+		return errors.NewNotFoundError("supplier not found or does not belong to this company")
+	}
+	if !sup.IsActive {
+		return errors.NewValidationError("supplier is not active")
+	}
+	return nil
 }

@@ -13,6 +13,7 @@ type Router struct {
 	companyHandler      *handler.CompanyHandler
 	subscriptionHandler *handler.SubscriptionHandler
 	productHandler      *handler.ProductHandler
+	supplierHandler     *handler.SupplierHandler
 	inventoryHandler    *handler.InventoryHandler
 	franchiseHandler    *handler.FranchiseHandler
 	jwtManager          *security.JWTManager
@@ -24,6 +25,7 @@ func NewRouter(
 	companyHandler *handler.CompanyHandler,
 	subscriptionHandler *handler.SubscriptionHandler,
 	productHandler *handler.ProductHandler,
+	supplierHandler *handler.SupplierHandler,
 	inventoryHandler *handler.InventoryHandler,
 	franchiseHandler *handler.FranchiseHandler,
 	jwtManager *security.JWTManager,
@@ -34,6 +36,7 @@ func NewRouter(
 		companyHandler:      companyHandler,
 		subscriptionHandler: subscriptionHandler,
 		productHandler:      productHandler,
+		supplierHandler:     supplierHandler,
 		inventoryHandler:    inventoryHandler,
 		franchiseHandler:    franchiseHandler,
 		jwtManager:          jwtManager,
@@ -94,6 +97,14 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.GET("/:companyId/products/:productId/variants/:variantId", r.productHandler.GetProductVariant)
 		companies.PUT("/:companyId/products/:productId/variants/:variantId", r.productHandler.UpdateProductVariant)
 		companies.DELETE("/:companyId/products/:productId/variants/:variantId", r.productHandler.DeleteProductVariant)
+
+		// Supplier routes nested under company
+		companies.POST("/:companyId/suppliers", r.supplierHandler.CreateSupplier)
+		companies.GET("/:companyId/suppliers", r.supplierHandler.ListSuppliers)
+		companies.GET("/:companyId/suppliers/:supplierId", r.supplierHandler.GetSupplier)
+		companies.PUT("/:companyId/suppliers/:supplierId", r.supplierHandler.UpdateSupplier)
+		companies.DELETE("/:companyId/suppliers/:supplierId", r.supplierHandler.DeleteSupplier)
+		companies.GET("/:companyId/suppliers/:supplierId/products", r.supplierHandler.GetSupplierProducts)
 
 		// Franchise routes
 		companies.POST("/:companyId/franchises", r.franchiseHandler.CreateFranchise)

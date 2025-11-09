@@ -8,11 +8,13 @@ import (
 
 // Product DTOs
 type CreateProductRequest struct {
-	Name               string  `json:"name" binding:"required"`
-	Description        string  `json:"description"`
-	SKU                string  `json:"sku" binding:"required"`
-	BaseRetailPrice    float64 `json:"base_retail_price" binding:"min=0"`
-	BaseWholesalePrice float64 `json:"base_wholesale_price" binding:"min=0"`
+	Name               string   `json:"name" binding:"required"`
+	Description        string   `json:"description"`
+	SKU                string   `json:"sku" binding:"required"`
+	BaseRetailPrice    float64  `json:"base_retail_price" binding:"min=0"`
+	BaseWholesalePrice float64  `json:"base_wholesale_price" binding:"min=0"`
+	SupplierID         *uint    `json:"supplier_id"`
+	SupplierCost       *float64 `json:"supplier_cost" binding:"omitempty,min=0"`
 }
 
 type UpdateProductRequest struct {
@@ -21,6 +23,8 @@ type UpdateProductRequest struct {
 	SKU                string   `json:"sku"`
 	BaseRetailPrice    *float64 `json:"base_retail_price" binding:"omitempty,min=0"`
 	BaseWholesalePrice *float64 `json:"base_wholesale_price" binding:"omitempty,min=0"`
+	SupplierID         *uint    `json:"supplier_id"`
+	SupplierCost       *float64 `json:"supplier_cost" binding:"omitempty,min=0"`
 	IsActive           *bool    `json:"is_active"`
 }
 
@@ -32,6 +36,8 @@ type ProductResponse struct {
 	SKU                string                   `json:"sku"`
 	BaseRetailPrice    float64                  `json:"base_retail_price"`
 	BaseWholesalePrice float64                  `json:"base_wholesale_price"`
+	SupplierID         *uint                    `json:"supplier_id,omitempty"`
+	SupplierCost       *float64                 `json:"supplier_cost,omitempty"`
 	IsActive           bool                     `json:"is_active"`
 	Variants           []ProductVariantResponse `json:"variants,omitempty"`
 }
@@ -120,6 +126,8 @@ func ToProductResponse(p *product.Product) *ProductResponse {
 		SKU:                p.SKU,
 		BaseRetailPrice:    p.BaseRetailPrice,
 		BaseWholesalePrice: p.BaseWholesalePrice,
+		SupplierID:         p.SupplierID,
+		SupplierCost:       p.SupplierCost,
 		IsActive:           p.IsActive,
 	}
 
@@ -160,6 +168,8 @@ func (req *CreateProductRequest) ToProduct(companyID uint) *product.Product {
 		SKU:                req.SKU,
 		BaseRetailPrice:    req.BaseRetailPrice,
 		BaseWholesalePrice: req.BaseWholesalePrice,
+		SupplierID:         req.SupplierID,
+		SupplierCost:       req.SupplierCost,
 		IsActive:           true,
 	}
 }

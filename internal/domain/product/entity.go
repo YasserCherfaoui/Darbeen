@@ -14,6 +14,8 @@ type Product struct {
 	SKU                string  `gorm:"not null"`
 	BaseRetailPrice    float64 `gorm:"type:decimal(10,2);not null"`
 	BaseWholesalePrice float64 `gorm:"type:decimal(10,2);not null"`
+	SupplierID         *uint   `gorm:"index"`                 // Nullable - product may not have a supplier
+	SupplierCost       *float64 `gorm:"type:decimal(10,2)"`    // Nullable - cost from supplier
 	IsActive           bool    `gorm:"default:true"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

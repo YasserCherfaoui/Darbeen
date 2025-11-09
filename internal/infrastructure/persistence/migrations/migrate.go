@@ -8,6 +8,7 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/domain/inventory"
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
 	"github.com/YasserCherfaoui/darween/internal/domain/subscription"
+	"github.com/YasserCherfaoui/darween/internal/domain/supplier"
 	"github.com/YasserCherfaoui/darween/internal/domain/user"
 	"gorm.io/gorm"
 )
@@ -23,6 +24,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&user.UserCompanyRole{},
 		&franchise.Franchise{},
 		&user.UserFranchiseRole{},
+		&supplier.Supplier{},
 		&product.Product{},
 		&product.ProductVariant{},
 		&inventory.Inventory{},
