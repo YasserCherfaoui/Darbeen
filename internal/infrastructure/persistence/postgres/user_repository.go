@@ -89,3 +89,39 @@ func (r *userRepository) FindCompanyUsersByCompanyID(companyID uint) ([]*user.Us
 	err := r.db.Where("company_id = ? AND is_active = ?", companyID, true).Find(&roles).Error
 	return roles, err
 }
+
+// User-Franchise-Role operations
+
+func (r *userRepository) CreateUserFranchiseRole(ufr *user.UserFranchiseRole) error {
+	return r.db.Create(ufr).Error
+}
+
+func (r *userRepository) FindUserFranchisesByUserID(userID uint) ([]*user.UserFranchiseRole, error) {
+	var roles []*user.UserFranchiseRole
+	err := r.db.Where("user_id = ? AND is_active = ?", userID, true).Find(&roles).Error
+	return roles, err
+}
+
+func (r *userRepository) FindUserRoleInFranchise(userID, franchiseID uint) (*user.UserFranchiseRole, error) {
+	var role user.UserFranchiseRole
+	err := r.db.Where("user_id = ? AND franchise_id = ? AND is_active = ?", userID, franchiseID, true).First(&role).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("user role in franchise not found")
+		}
+		return nil, err
+	}
+	return &role, nil
+}
+
+func (r *userRepository) DeleteUserFranchiseRole(userID, franchiseID uint) error {
+	return r.db.Model(&user.UserFranchiseRole{}).
+		Where("user_id = ? AND franchise_id = ?", userID, franchiseID).
+		Update("is_active", false).Error
+}
+
+func (r *userRepository) FindFranchiseUsersByFranchiseID(franchiseID uint) ([]*user.UserFranchiseRole, error) {
+	var roles []*user.UserFranchiseRole
+	err := r.db.Where("franchise_id = ? AND is_active = ?", franchiseID, true).Find(&roles).Error
+	return roles, err
+}

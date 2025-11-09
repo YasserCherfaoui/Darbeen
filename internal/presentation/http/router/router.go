@@ -13,6 +13,8 @@ type Router struct {
 	companyHandler      *handler.CompanyHandler
 	subscriptionHandler *handler.SubscriptionHandler
 	productHandler      *handler.ProductHandler
+	inventoryHandler    *handler.InventoryHandler
+	franchiseHandler    *handler.FranchiseHandler
 	jwtManager          *security.JWTManager
 }
 
@@ -22,6 +24,8 @@ func NewRouter(
 	companyHandler *handler.CompanyHandler,
 	subscriptionHandler *handler.SubscriptionHandler,
 	productHandler *handler.ProductHandler,
+	inventoryHandler *handler.InventoryHandler,
+	franchiseHandler *handler.FranchiseHandler,
 	jwtManager *security.JWTManager,
 ) *Router {
 	return &Router{
@@ -30,6 +34,8 @@ func NewRouter(
 		companyHandler:      companyHandler,
 		subscriptionHandler: subscriptionHandler,
 		productHandler:      productHandler,
+		inventoryHandler:    inventoryHandler,
+		franchiseHandler:    franchiseHandler,
 		jwtManager:          jwtManager,
 	}
 }
@@ -83,14 +89,43 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 
 		// Product variant routes nested under products
 		companies.POST("/:companyId/products/:productId/variants", r.productHandler.CreateProductVariant)
+		companies.POST("/:companyId/products/:productId/variants/bulk", r.productHandler.BulkCreateProductVariants)
 		companies.GET("/:companyId/products/:productId/variants", r.productHandler.ListProductVariants)
 		companies.GET("/:companyId/products/:productId/variants/:variantId", r.productHandler.GetProductVariant)
 		companies.PUT("/:companyId/products/:productId/variants/:variantId", r.productHandler.UpdateProductVariant)
 		companies.DELETE("/:companyId/products/:productId/variants/:variantId", r.productHandler.DeleteProductVariant)
 
-		// Stock management routes
-		companies.PUT("/:companyId/products/:productId/variants/:variantId/stock", r.productHandler.UpdateVariantStock)
-		companies.POST("/:companyId/products/:productId/variants/:variantId/stock/adjust", r.productHandler.AdjustVariantStock)
+		// Franchise routes
+		companies.POST("/:companyId/franchises", r.franchiseHandler.CreateFranchise)
+		companies.GET("/:companyId/franchises", r.franchiseHandler.ListFranchises)
+
+		// Inventory routes
+		companies.GET("/:companyId/inventory", r.inventoryHandler.GetCompanyInventory)
+	}
+
+	// Franchise-specific routes
+	franchises := protected.Group("/franchises")
+	{
+		franchises.GET("/:franchiseId", r.franchiseHandler.GetFranchise)
+		franchises.PUT("/:franchiseId", r.franchiseHandler.UpdateFranchise)
+		franchises.POST("/:franchiseId/inventory/initialize", r.franchiseHandler.InitializeFranchiseInventory)
+		franchises.GET("/:franchiseId/inventory", r.inventoryHandler.GetFranchiseInventory)
+		franchises.GET("/:franchiseId/pricing", r.franchiseHandler.GetFranchisePricing)
+		franchises.POST("/:franchiseId/pricing", r.franchiseHandler.SetFranchisePricing)
+		franchises.DELETE("/:franchiseId/pricing/:variantId", r.franchiseHandler.DeleteFranchisePricing)
+		franchises.POST("/:franchiseId/users", r.franchiseHandler.AddUserToFranchise)
+		franchises.DELETE("/:franchiseId/users/:userId", r.franchiseHandler.RemoveUserFromFranchise)
+	}
+
+	// Inventory routes
+	inventory := protected.Group("/inventory")
+	{
+		inventory.POST("", r.inventoryHandler.CreateInventory)
+		inventory.PUT("/:inventoryId/stock", r.inventoryHandler.UpdateInventoryStock)
+		inventory.POST("/:inventoryId/stock/adjust", r.inventoryHandler.AdjustInventoryStock)
+		inventory.POST("/:inventoryId/reserve", r.inventoryHandler.ReserveStock)
+		inventory.POST("/:inventoryId/release", r.inventoryHandler.ReleaseStock)
+		inventory.GET("/:inventoryId/movements", r.inventoryHandler.GetInventoryMovements)
 	}
 
 	// Health check

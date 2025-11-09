@@ -5,6 +5,8 @@ import (
 
 	"github.com/YasserCherfaoui/darween/internal/application/auth"
 	"github.com/YasserCherfaoui/darween/internal/application/company"
+	"github.com/YasserCherfaoui/darween/internal/application/franchise"
+	"github.com/YasserCherfaoui/darween/internal/application/inventory"
 	"github.com/YasserCherfaoui/darween/internal/application/product"
 	"github.com/YasserCherfaoui/darween/internal/application/subscription"
 	"github.com/YasserCherfaoui/darween/internal/application/user"
@@ -34,10 +36,8 @@ func main() {
 	}
 
 	// Run migrations
-	if cfg.Server.GinMode != "debug" {
-		if err := migrations.AutoMigrate(db); err != nil {
-			log.Fatalf("Failed to run migrations: %v", err)
-		}
+	if err := migrations.AutoMigrate(db); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Initialize repositories
@@ -45,6 +45,8 @@ func main() {
 	companyRepo := postgres.NewCompanyRepository(db)
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
 	productRepo := postgres.NewProductRepository(db)
+	franchiseRepo := postgres.NewFranchiseRepository(db)
+	inventoryRepo := postgres.NewInventoryRepository(db)
 
 	// Initialize JWT manager
 	jwtManager := security.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
@@ -55,6 +57,8 @@ func main() {
 	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
 	productService := product.NewService(productRepo, userRepo)
+	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo)
+	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -62,9 +66,11 @@ func main() {
 	companyHandler := handler.NewCompanyHandler(companyService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	productHandler := handler.NewProductHandler(productService)
+	inventoryHandler := handler.NewInventoryHandler(inventoryService)
+	franchiseHandler := handler.NewFranchiseHandler(franchiseService)
 
 	// Initialize router
-	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, jwtManager)
+	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, inventoryHandler, franchiseHandler, jwtManager)
 
 	// Create Gin engine
 	engine := gin.Default()

@@ -1,171 +1,156 @@
 <!-- a4575041-5921-4563-b061-326c2f5f6534 7f9eb968-c0c7-4501-a50a-bc2589270203 -->
-# ERP Platform with DDD Architecture
+# ERP Platform with DDD Architecture - Extended with Products
 
-## Project Structure
+## Products & Variants Feature Specification
 
-Following Domain-Driven Design principles, the project will be organized as:
+### Product Entity
+
+- **Fields**: ID, CompanyID, Name, Description, SKU (unique per company), BasePrice, IsActive, CreatedAt, UpdatedAt
+- **Relationships**: Belongs to Company, has many ProductVariants
+- **Business Rules**: SKU must be unique within a company
+
+### ProductVariant Entity
+
+- **Fields**: ID, ProductID, Name, SKU (unique per company), Price, Stock, Attributes (JSON), IsActive, CreatedAt, UpdatedAt
+- **Relationships**: Belongs to Product
+- **Business Rules**: 
+  - Variant SKU must be unique within a company
+  - Price can override base product price
+  - Attributes stored as JSON for flexibility (e.g., `{"size": "L", "color": "Blue"}`)
+
+## Product Management Endpoints
+
+### Product Routes (Protected)
+
+- `POST /api/v1/companies/:companyId/products` - Create product
+- `GET /api/v1/companies/:companyId/products` - List company products (with pagination)
+- `GET /api/v1/companies/:companyId/products/:id` - Get product details with variants
+- `PUT /api/v1/companies/:companyId/products/:id` - Update product (admin/owner only)
+- `DELETE /api/v1/companies/:companyId/products/:id` - Soft delete product (admin/owner only)
+
+### Product Variant Routes (Protected)
+
+- `POST /api/v1/companies/:companyId/products/:productId/variants` - Create variant
+- `GET /api/v1/companies/:companyId/products/:productId/variants` - List product variants
+- `GET /api/v1/companies/:companyId/products/:productId/variants/:id` - Get variant details
+- `PUT /api/v1/companies/:companyId/products/:productId/variants/:id` - Update variant
+- `DELETE /api/v1/companies/:companyId/products/:productId/variants/:id` - Soft delete variant
+
+## Implementation Structure
 
 ```
-darween/
-├── cmd/
-│   └── api/
-│       └── main.go                    # Application entry point
-├── internal/
-│   ├── domain/                        # Domain layer (entities, interfaces)
-│   │   ├── user/
-│   │   │   ├── entity.go             # User entity
-│   │   │   └── repository.go         # User repository interface
-│   │   ├── company/
-│   │   │   ├── entity.go             # Company entity
-│   │   │   └── repository.go         # Company repository interface
-│   │   └── subscription/
-│   │       ├── entity.go             # Subscription entity
-│   │       └── repository.go         # Subscription repository interface
-│   ├── application/                   # Application layer (use cases)
-│   │   ├── user/
-│   │   │   ├── dto.go                # DTOs for user operations
-│   │   │   └── service.go            # User application service
-│   │   ├── company/
-│   │   │   ├── dto.go
-│   │   │   └── service.go
-│   │   ├── subscription/
-│   │   │   ├── dto.go
-│   │   │   └── service.go
-│   │   └── auth/
-│   │       ├── dto.go
-│   │       └── service.go            # Authentication service (JWT)
-│   ├── infrastructure/                # Infrastructure layer
-│   │   ├── persistence/
-│   │   │   ├── postgres/
-│   │   │   │   ├── database.go       # DB connection
-│   │   │   │   ├── user_repository.go
-│   │   │   │   ├── company_repository.go
-│   │   │   │   └── subscription_repository.go
-│   │   │   └── migrations/
-│   │   │       └── migrate.go        # Auto-migration setup
-│   │   └── security/
-│   │       └── jwt.go                # JWT token generation/validation
-│   └── presentation/                  # Presentation layer (HTTP)
-│       ├── http/
-│       │   ├── handler/
-│       │   │   ├── user_handler.go
-│       │   │   ├── company_handler.go
-│       │   │   ├── subscription_handler.go
-│       │   │   └── auth_handler.go
-│       │   ├── middleware/
-│       │   │   ├── auth.go           # JWT authentication middleware
-│       │   │   └── cors.go
-│       │   └── router/
-│       │       └── router.go         # Gin router setup
-│       └── response/
-│           └── response.go           # Standard HTTP response format
-├── pkg/                               # Shared packages
-│   ├── config/
-│   │   └── config.go                 # Configuration management
-│   └── errors/
-│       └── errors.go                 # Custom error types
-├── go.mod
-├── go.sum
-└── .env.example                      # Environment variables template
+internal/
+├── domain/
+│   └── product/
+│       ├── entity.go             # Product & ProductVariant entities
+│       └── repository.go         # Repository interfaces
+├── application/
+│   └── product/
+│       ├── dto.go                # Product & Variant DTOs
+│       └── service.go            # Product management service
+├── infrastructure/
+│   └── persistence/
+│       └── postgres/
+│           └── product_repository.go  # Repository implementation
+└── presentation/
+    └── http/
+        └── handler/
+            └── product_handler.go     # Product & Variant handlers
 ```
 
-## Core Domain Models
+## Database Schema
 
-### User Entity
+### products Table
 
-- Fields: ID, Email, Password (hashed), FirstName, LastName, IsActive, CreatedAt, UpdatedAt
-- Relationships: Many-to-many with Company through UserCompanyRole
+```sql
+- id (PK)
+- company_id (FK → companies.id, indexed)
+- name (varchar, not null)
+- description (text)
+- sku (varchar, not null)
+- base_price (decimal)
+- is_active (boolean, default true)
+- created_at, updated_at (timestamps)
+- UNIQUE INDEX (company_id, sku)
+```
 
-### Company Entity
+### product_variants Table
 
-- Fields: ID, Name, Code (unique identifier), Description, IsActive, CreatedAt, UpdatedAt
-- Relationships: Many users, one subscription
+```sql
+- id (PK)
+- product_id (FK → products.id, indexed)
+- name (varchar, not null)
+- sku (varchar, not null)
+- price (decimal)
+- stock (integer, default 0)
+- attributes (jsonb)
+- is_active (boolean, default true)
+- created_at, updated_at (timestamps)
+- UNIQUE INDEX (product_id, sku)
+```
 
-### Subscription Entity
+## Authorization Rules
 
-- Fields: ID, CompanyID, PlanType (enum: free, basic, premium, enterprise), Status (enum: active, inactive, expired), StartDate, EndDate, MaxUsers, CreatedAt, UpdatedAt
-- Relationships: Belongs to Company
-
-### UserCompanyRole Entity (Junction Table)
-
-- Fields: ID, UserID, CompanyID, Role (enum: owner, admin, manager, employee), IsActive, CreatedAt
-- Purpose: Enables users to belong to multiple companies with different roles
+- Users must belong to the company to access products
+- **Owner/Admin**: Full CRUD access to products and variants
+- **Manager**: Can view all, update stock levels
+- **Employee**: Read-only access
 
 ## Key Implementation Details
 
-### 1. Database Setup
+### 1. Company Scoping
 
-- Use GORM with PostgreSQL driver
-- Implement auto-migration for development
-- Add unique constraints: User.Email, Company.Code
-- Add indexes on foreign keys and frequently queried fields
+- All product queries filtered by company_id
+- Validate user has access to company before any operation
+- Prevent cross-company data access
 
-### 2. JWT Authentication
+### 2. SKU Uniqueness
 
-- Token generation on login with user ID and active company roles
-- Middleware to validate JWT and extract user context
-- Token expiration: 24 hours (configurable)
-- Refresh token mechanism (optional for future)
+- Enforce unique SKU per company (not globally)
+- Composite unique constraint: (company_id, sku)
+- Validate on create and update
 
-### 3. Repository Pattern
+### 3. Soft Deletes
 
-- Define interfaces in domain layer
-- Implement concrete repositories in infrastructure/persistence
-- Handle multi-company data isolation with company_id filtering where applicable
+- Set is_active = false instead of hard delete
+- Filter inactive products in list queries
+- Allow reactivation by admins
 
-### 4. HTTP Endpoints
+### 4. Variant Attributes
 
-**Auth Routes** (public):
+- Use PostgreSQL JSONB for flexible attributes
+- Support any key-value pairs
+- Enable querying by attributes (future enhancement)
 
-- POST `/api/v1/auth/register` - User registration
-- POST `/api/v1/auth/login` - User login (returns JWT)
+### 5. Pagination
 
-**User Routes** (protected):
+- List endpoints support page and limit query params
+- Default: page=1, limit=20
+- Return total count in response
 
-- GET `/api/v1/users/me` - Get current user profile
-- PUT `/api/v1/users/me` - Update current user profile
-- GET `/api/v1/users` - List users (filtered by company context)
+## Example API Flows
 
-**Company Routes** (protected):
+### Create Product with Variants
 
-- POST `/api/v1/companies` - Create company (user becomes owner)
-- GET `/api/v1/companies` - List user's companies
-- GET `/api/v1/companies/:id` - Get company details
-- PUT `/api/v1/companies/:id` - Update company (admin/owner only)
-- POST `/api/v1/companies/:id/users` - Add user to company
-- DELETE `/api/v1/companies/:id/users/:userId` - Remove user from company
+```
+1. POST /api/v1/companies/1/products
+   Body: {name: "T-Shirt", sku: "TSHIRT-001", base_price: 20.00}
+   
+2. POST /api/v1/companies/1/products/1/variants
+   Body: {name: "Small Blue", sku: "TSHIRT-001-S-BLU", price: 20.00, 
+          attributes: {"size": "S", "color": "Blue"}}
+   
+3. POST /api/v1/companies/1/products/1/variants
+   Body: {name: "Large Red", sku: "TSHIRT-001-L-RED", price: 22.00,
+          attributes: {"size": "L", "color": "Red"}}
+```
 
-**Subscription Routes** (protected):
+### List Products with Variants
 
-- GET `/api/v1/companies/:id/subscription` - Get company subscription
-- PUT `/api/v1/companies/:id/subscription` - Update subscription (owner only)
-
-### 5. Configuration
-
-Environment variables:
-
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
-- `JWT_SECRET`, `JWT_EXPIRATION`
-- `SERVER_PORT`
-- `GIN_MODE` (debug/release)
-
-### 6. Error Handling
-
-- Custom error types for domain errors (NotFound, Unauthorized, ValidationError)
-- Centralized error response formatting
-- Proper HTTP status codes
-
-### 7. Dependencies
-
-Required packages:
-
-- `github.com/gin-gonic/gin` - HTTP framework
-- `gorm.io/gorm` - ORM
-- `gorm.io/driver/postgres` - PostgreSQL driver
-- `github.com/golang-jwt/jwt/v5` - JWT implementation
-- `golang.org/x/crypto/bcrypt` - Password hashing
-- `github.com/joho/godotenv` - Environment variables
-- `github.com/go-playground/validator/v10` - Request validation
+```
+GET /api/v1/companies/1/products?page=1&limit=20
+Response includes products with their variants embedded
+```
 
 ### To-dos
 

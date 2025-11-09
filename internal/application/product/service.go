@@ -108,8 +108,11 @@ func (s *Service) UpdateProduct(userID, companyID, productID uint, req *UpdatePr
 	if req.Description != "" {
 		existingProduct.Description = req.Description
 	}
-	if req.BasePrice >= 0 {
-		existingProduct.BasePrice = req.BasePrice
+	if req.BaseRetailPrice != nil && *req.BaseRetailPrice >= 0 {
+		existingProduct.BaseRetailPrice = *req.BaseRetailPrice
+	}
+	if req.BaseWholesalePrice != nil && *req.BaseWholesalePrice >= 0 {
+		existingProduct.BaseWholesalePrice = *req.BaseWholesalePrice
 	}
 	if req.IsActive != nil {
 		existingProduct.IsActive = *req.IsActive
@@ -250,11 +253,18 @@ func (s *Service) UpdateProductVariant(userID, companyID, productID, variantID u
 	if req.Name != "" {
 		existingVariant.Name = req.Name
 	}
-	if req.Price >= 0 {
-		existingVariant.Price = req.Price
+	if req.RetailPrice != nil && *req.RetailPrice >= 0 {
+		existingVariant.RetailPrice = req.RetailPrice
+		existingVariant.UseParentPricing = false
 	}
-	if req.Stock >= 0 {
-		existingVariant.Stock = req.Stock
+	if req.WholesalePrice != nil && *req.WholesalePrice >= 0 {
+		existingVariant.WholesalePrice = req.WholesalePrice
+		existingVariant.UseParentPricing = false
+	}
+	if req.UseParentPricing != nil && *req.UseParentPricing {
+		existingVariant.UseParentPricing = true
+		existingVariant.RetailPrice = nil
+		existingVariant.WholesalePrice = nil
 	}
 	if req.Attributes != nil {
 		// Convert attributes to JSON
@@ -297,69 +307,6 @@ func (s *Service) DeleteProductVariant(userID, companyID, productID, variantID u
 	return nil
 }
 
-// Stock management operations
-func (s *Service) UpdateVariantStock(userID, companyID, productID, variantID uint, req *UpdateStockRequest) (*ProductVariantResponse, error) {
-	// Check user authorization (managers can update stock)
-	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleManager); err != nil {
-		return nil, err
-	}
-
-	// Verify product exists and belongs to company
-	_, err := s.productRepo.FindProductByIDAndCompany(productID, companyID)
-	if err != nil {
-		return nil, errors.NewNotFoundError("product not found")
-	}
-
-	// Get existing variant
-	variant, err := s.productRepo.FindProductVariantByIDAndProduct(variantID, productID)
-	if err != nil {
-		return nil, errors.NewNotFoundError("product variant not found")
-	}
-
-	if err := s.productRepo.UpdateVariantStock(variantID, req.Stock); err != nil {
-		return nil, errors.NewInternalError("failed to update stock", err)
-	}
-
-	// Update local variant object
-	variant.Stock = req.Stock
-	return ToProductVariantResponse(variant), nil
-}
-
-func (s *Service) AdjustVariantStock(userID, companyID, productID, variantID uint, req *AdjustStockRequest) (*ProductVariantResponse, error) {
-	// Check user authorization (managers can adjust stock)
-	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleManager); err != nil {
-		return nil, err
-	}
-
-	// Verify product exists and belongs to company
-	_, err := s.productRepo.FindProductByIDAndCompany(productID, companyID)
-	if err != nil {
-		return nil, errors.NewNotFoundError("product not found")
-	}
-
-	// Get existing variant
-	variant, err := s.productRepo.FindProductVariantByIDAndProduct(variantID, productID)
-	if err != nil {
-		return nil, errors.NewNotFoundError("product variant not found")
-	}
-
-	// Adjust stock
-	if req.Amount > 0 {
-		if err := s.productRepo.AddVariantStock(variantID, req.Amount); err != nil {
-			return nil, errors.NewInternalError("failed to add stock", err)
-		}
-		variant.Stock += req.Amount
-	} else if req.Amount < 0 {
-		amount := -req.Amount
-		if err := s.productRepo.RemoveVariantStock(variantID, amount); err != nil {
-			return nil, errors.NewInternalError("insufficient stock or failed to remove stock", err)
-		}
-		variant.Stock -= amount
-	}
-
-	return ToProductVariantResponse(variant), nil
-}
-
 // Helper function to check user access to company
 func (s *Service) checkUserCompanyAccess(userID, companyID uint, minRole user.Role) error {
 	userRole, err := s.userRepo.FindUserRoleInCompany(userID, companyID)
@@ -385,4 +332,174 @@ func (s *Service) hasSufficientRole(userRole, requiredRole user.Role) bool {
 	}
 
 	return roleHierarchy[userRole] >= roleHierarchy[requiredRole]
+}
+
+// BulkCreateProductVariants creates multiple product variants from attribute combinations
+func (s *Service) BulkCreateProductVariants(userID, companyID, productID uint, req *BulkCreateProductVariantsRequest) (*BulkCreateProductVariantsResponse, error) {
+	// Check user authorization
+	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
+		return nil, err
+	}
+
+	// Verify product exists and belongs to company
+	parentProduct, err := s.productRepo.FindProductByIDAndCompany(productID, companyID)
+	if err != nil {
+		return nil, errors.NewNotFoundError("product not found")
+	}
+
+	// Validate that we have at least one attribute
+	if len(req.Attributes) == 0 {
+		return nil, errors.NewValidationError("at least one attribute is required")
+	}
+
+	// Generate all combinations
+	combinations := s.generateAttributeCombinations(req.Attributes)
+
+	// Create variants for each combination
+	variants := make([]*product.ProductVariant, 0, len(combinations))
+	variantResponses := make([]ProductVariantResponse, 0, len(combinations))
+
+	for _, combo := range combinations {
+		// Generate variant name: "Red - 39"
+		variantName := s.generateVariantName(combo)
+
+		// Generate SKU: "PARENT-SKU>RED>39"
+		variantSKU := s.generateVariantSKU(parentProduct.SKU, combo)
+
+		// Check if variant SKU already exists
+		existingVariant, _ := s.productRepo.FindProductVariantBySKUAndProduct(variantSKU, productID)
+		if existingVariant != nil {
+			return nil, errors.NewConflictError("variant with SKU " + variantSKU + " already exists")
+		}
+
+		// Convert combination to attributes JSON
+		attributesMap := make(map[string]interface{})
+		for _, attr := range combo {
+			attributesMap[attr.Name] = attr.Value
+		}
+		attributesJSON, _ := json.Marshal(attributesMap)
+
+		// Create variant entity
+		newVariant := &product.ProductVariant{
+			ProductID:        productID,
+			Name:             variantName,
+			SKU:              variantSKU,
+			UseParentPricing: req.UseParentPricing,
+			Attributes:       attributesJSON,
+			IsActive:         true,
+		}
+
+		// Set pricing based on strategy
+		if !req.UseParentPricing {
+			// If not using parent pricing, set explicit prices
+			newVariant.RetailPrice = &parentProduct.BaseRetailPrice
+			newVariant.WholesalePrice = &parentProduct.BaseWholesalePrice
+		}
+
+		if !newVariant.IsValid() {
+			return nil, errors.NewValidationError("invalid variant data for SKU: " + variantSKU)
+		}
+
+		variants = append(variants, newVariant)
+	}
+
+	// Batch create all variants
+	for _, variant := range variants {
+		if err := s.productRepo.CreateProductVariant(variant); err != nil {
+			return nil, errors.NewInternalError("failed to create product variant", err)
+		}
+		variantResponses = append(variantResponses, *ToProductVariantResponse(variant))
+	}
+
+	return &BulkCreateProductVariantsResponse{
+		CreatedCount: len(variantResponses),
+		Variants:     variantResponses,
+	}, nil
+}
+
+// generateAttributeCombinations generates all possible combinations (cartesian product)
+func (s *Service) generateAttributeCombinations(attributes []AttributeDefinition) [][]AttributeValue {
+	if len(attributes) == 0 {
+		return [][]AttributeValue{}
+	}
+
+	// Start with the first attribute
+	var combinations [][]AttributeValue
+	for _, value := range attributes[0].Values {
+		combinations = append(combinations, []AttributeValue{{Name: attributes[0].Name, Value: value}})
+	}
+
+	// For each subsequent attribute, multiply the combinations
+	for i := 1; i < len(attributes); i++ {
+		var newCombinations [][]AttributeValue
+		for _, combo := range combinations {
+			for _, value := range attributes[i].Values {
+				newCombo := make([]AttributeValue, len(combo))
+				copy(newCombo, combo)
+				newCombo = append(newCombo, AttributeValue{Name: attributes[i].Name, Value: value})
+				newCombinations = append(newCombinations, newCombo)
+			}
+		}
+		combinations = newCombinations
+	}
+
+	return combinations
+}
+
+// generateVariantName creates a human-readable name from attributes
+func (s *Service) generateVariantName(combo []AttributeValue) string {
+	if len(combo) == 0 {
+		return ""
+	}
+
+	names := make([]string, len(combo))
+	for i, attr := range combo {
+		names[i] = attr.Value
+	}
+	return join(names, " - ")
+}
+
+// generateVariantSKU creates SKU with pattern: PARENT>VALUE1>VALUE2
+func (s *Service) generateVariantSKU(parentSKU string, combo []AttributeValue) string {
+	sku := parentSKU
+	for _, attr := range combo {
+		// Normalize value: uppercase, remove spaces
+		normalizedValue := normalizeForSKU(attr.Value)
+		sku += ">" + normalizedValue
+	}
+	return sku
+}
+
+// Helper type for attribute combinations
+type AttributeValue struct {
+	Name  string
+	Value string
+}
+
+// Helper function to join strings
+func join(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
+}
+
+// Helper function to normalize values for SKU
+func normalizeForSKU(value string) string {
+	// Convert to uppercase and remove spaces
+	normalized := ""
+	for _, char := range value {
+		if char != ' ' {
+			if char >= 'a' && char <= 'z' {
+				normalized += string(char - 32) // Convert to uppercase
+			} else {
+				normalized += string(char)
+			}
+		}
+	}
+	return normalized
 }

@@ -8,58 +8,63 @@ import (
 
 // Product DTOs
 type CreateProductRequest struct {
-	Name        string  `json:"name" binding:"required"`
-	Description string  `json:"description"`
-	SKU         string  `json:"sku" binding:"required"`
-	BasePrice   float64 `json:"base_price" binding:"min=0"`
+	Name               string  `json:"name" binding:"required"`
+	Description        string  `json:"description"`
+	SKU                string  `json:"sku" binding:"required"`
+	BaseRetailPrice    float64 `json:"base_retail_price" binding:"min=0"`
+	BaseWholesalePrice float64 `json:"base_wholesale_price" binding:"min=0"`
 }
 
 type UpdateProductRequest struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	SKU         string  `json:"sku"`
-	BasePrice   float64 `json:"base_price" binding:"min=0"`
-	IsActive    *bool   `json:"is_active"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description"`
+	SKU                string   `json:"sku"`
+	BaseRetailPrice    *float64 `json:"base_retail_price" binding:"omitempty,min=0"`
+	BaseWholesalePrice *float64 `json:"base_wholesale_price" binding:"omitempty,min=0"`
+	IsActive           *bool    `json:"is_active"`
 }
 
 type ProductResponse struct {
-	ID          uint                     `json:"id"`
-	CompanyID   uint                     `json:"company_id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	SKU         string                   `json:"sku"`
-	BasePrice   float64                  `json:"base_price"`
-	IsActive    bool                     `json:"is_active"`
-	Variants    []ProductVariantResponse `json:"variants,omitempty"`
+	ID                 uint                     `json:"id"`
+	CompanyID          uint                     `json:"company_id"`
+	Name               string                   `json:"name"`
+	Description        string                   `json:"description"`
+	SKU                string                   `json:"sku"`
+	BaseRetailPrice    float64                  `json:"base_retail_price"`
+	BaseWholesalePrice float64                  `json:"base_wholesale_price"`
+	IsActive           bool                     `json:"is_active"`
+	Variants           []ProductVariantResponse `json:"variants,omitempty"`
 }
 
 // Product Variant DTOs
 type CreateProductVariantRequest struct {
-	Name       string                 `json:"name" binding:"required"`
-	SKU        string                 `json:"sku" binding:"required"`
-	Price      float64                `json:"price" binding:"min=0"`
-	Stock      int                    `json:"stock" binding:"min=0"`
-	Attributes map[string]interface{} `json:"attributes"`
+	Name             string                 `json:"name" binding:"required"`
+	SKU              string                 `json:"sku" binding:"required"`
+	RetailPrice      *float64               `json:"retail_price" binding:"omitempty,min=0"`
+	WholesalePrice   *float64               `json:"wholesale_price" binding:"omitempty,min=0"`
+	UseParentPricing bool                   `json:"use_parent_pricing"`
+	Attributes       map[string]interface{} `json:"attributes"`
 }
 
 type UpdateProductVariantRequest struct {
-	Name       string                 `json:"name"`
-	SKU        string                 `json:"sku"`
-	Price      float64                `json:"price" binding:"min=0"`
-	Stock      int                    `json:"stock" binding:"min=0"`
-	Attributes map[string]interface{} `json:"attributes"`
-	IsActive   *bool                  `json:"is_active"`
+	Name             string                 `json:"name"`
+	SKU              string                 `json:"sku"`
+	RetailPrice      *float64               `json:"retail_price" binding:"omitempty,min=0"`
+	WholesalePrice   *float64               `json:"wholesale_price" binding:"omitempty,min=0"`
+	UseParentPricing *bool                  `json:"use_parent_pricing"`
+	Attributes       map[string]interface{} `json:"attributes"`
+	IsActive         *bool                  `json:"is_active"`
 }
 
 type ProductVariantResponse struct {
-	ID         uint                   `json:"id"`
-	ProductID  uint                   `json:"product_id"`
-	Name       string                 `json:"name"`
-	SKU        string                 `json:"sku"`
-	Price      float64                `json:"price"`
-	Stock      int                    `json:"stock"`
-	Attributes map[string]interface{} `json:"attributes"`
-	IsActive   bool                   `json:"is_active"`
+	ID             uint                   `json:"id"`
+	ProductID      uint                   `json:"product_id"`
+	Name           string                 `json:"name"`
+	SKU            string                 `json:"sku"`
+	RetailPrice    *float64               `json:"retail_price,omitempty"`
+	WholesalePrice *float64               `json:"wholesale_price,omitempty"`
+	Attributes     map[string]interface{} `json:"attributes"`
+	IsActive       bool                   `json:"is_active"`
 }
 
 // Pagination DTOs
@@ -74,15 +79,6 @@ type PaginatedResponse struct {
 	Page       int         `json:"page"`
 	Limit      int         `json:"limit"`
 	TotalPages int         `json:"total_pages"`
-}
-
-// Stock management DTOs
-type UpdateStockRequest struct {
-	Stock int `json:"stock" binding:"min=0"`
-}
-
-type AdjustStockRequest struct {
-	Amount int `json:"amount"`
 }
 
 // Helper functions
@@ -117,13 +113,14 @@ func NewPaginatedResponse(data interface{}, total int64, page, limit int) *Pagin
 // Convert domain entities to response DTOs
 func ToProductResponse(p *product.Product) *ProductResponse {
 	response := &ProductResponse{
-		ID:          p.ID,
-		CompanyID:   p.CompanyID,
-		Name:        p.Name,
-		Description: p.Description,
-		SKU:         p.SKU,
-		BasePrice:   p.BasePrice,
-		IsActive:    p.IsActive,
+		ID:                 p.ID,
+		CompanyID:          p.CompanyID,
+		Name:               p.Name,
+		Description:        p.Description,
+		SKU:                p.SKU,
+		BaseRetailPrice:    p.BaseRetailPrice,
+		BaseWholesalePrice: p.BaseWholesalePrice,
+		IsActive:           p.IsActive,
 	}
 
 	if len(p.Variants) > 0 {
@@ -143,26 +140,27 @@ func ToProductVariantResponse(v *product.ProductVariant) *ProductVariantResponse
 	}
 
 	return &ProductVariantResponse{
-		ID:         v.ID,
-		ProductID:  v.ProductID,
-		Name:       v.Name,
-		SKU:        v.SKU,
-		Price:      v.Price,
-		Stock:      v.Stock,
-		Attributes: attributes,
-		IsActive:   v.IsActive,
+		ID:             v.ID,
+		ProductID:      v.ProductID,
+		Name:           v.Name,
+		SKU:            v.SKU,
+		RetailPrice:    v.RetailPrice,
+		WholesalePrice: v.WholesalePrice,
+		Attributes:     attributes,
+		IsActive:       v.IsActive,
 	}
 }
 
 // Convert request DTOs to domain entities
 func (req *CreateProductRequest) ToProduct(companyID uint) *product.Product {
 	return &product.Product{
-		CompanyID:   companyID,
-		Name:        req.Name,
-		Description: req.Description,
-		SKU:         req.SKU,
-		BasePrice:   req.BasePrice,
-		IsActive:    true,
+		CompanyID:          companyID,
+		Name:               req.Name,
+		Description:        req.Description,
+		SKU:                req.SKU,
+		BaseRetailPrice:    req.BaseRetailPrice,
+		BaseWholesalePrice: req.BaseWholesalePrice,
+		IsActive:           true,
 	}
 }
 
@@ -173,12 +171,29 @@ func (req *CreateProductVariantRequest) ToProductVariant(productID uint) *produc
 	}
 
 	return &product.ProductVariant{
-		ProductID:  productID,
-		Name:       req.Name,
-		SKU:        req.SKU,
-		Price:      req.Price,
-		Stock:      req.Stock,
-		Attributes: attributesJSON,
-		IsActive:   true,
+		ProductID:        productID,
+		Name:             req.Name,
+		SKU:              req.SKU,
+		RetailPrice:      req.RetailPrice,
+		WholesalePrice:   req.WholesalePrice,
+		UseParentPricing: req.UseParentPricing,
+		Attributes:       attributesJSON,
+		IsActive:         true,
 	}
+}
+
+// Bulk Product Variant DTOs
+type AttributeDefinition struct {
+	Name   string   `json:"name" binding:"required"`
+	Values []string `json:"values" binding:"required,min=1"`
+}
+
+type BulkCreateProductVariantsRequest struct {
+	Attributes       []AttributeDefinition `json:"attributes" binding:"required,min=1"`
+	UseParentPricing bool                  `json:"use_parent_pricing"`
+}
+
+type BulkCreateProductVariantsResponse struct {
+	CreatedCount int                      `json:"created_count"`
+	Variants     []ProductVariantResponse `json:"variants"`
 }

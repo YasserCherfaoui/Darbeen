@@ -51,6 +51,20 @@ func (UserCompanyRole) TableName() string {
 	return "user_company_roles"
 }
 
+// UserFranchiseRole represents the many-to-many relationship between users and franchises
+type UserFranchiseRole struct {
+	ID          uint `gorm:"primaryKey"`
+	UserID      uint `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	FranchiseID uint `gorm:"not null;index;constraint:OnDelete:CASCADE"`
+	Role        Role `gorm:"not null"`
+	IsActive    bool `gorm:"default:true"`
+	CreatedAt   time.Time
+}
+
+func (UserFranchiseRole) TableName() string {
+	return "user_franchise_roles"
+}
+
 type Role string
 
 const (

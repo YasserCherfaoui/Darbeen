@@ -7,15 +7,16 @@ import (
 )
 
 type Product struct {
-	ID          uint   `gorm:"primaryKey"`
-	CompanyID   uint   `gorm:"not null;index"`
-	Name        string `gorm:"not null"`
-	Description string
-	SKU         string  `gorm:"not null"`
-	BasePrice   float64 `gorm:"type:decimal(10,2)"`
-	IsActive    bool    `gorm:"default:true"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                 uint   `gorm:"primaryKey"`
+	CompanyID          uint   `gorm:"not null;index"`
+	Name               string `gorm:"not null"`
+	Description        string
+	SKU                string  `gorm:"not null"`
+	BaseRetailPrice    float64 `gorm:"type:decimal(10,2);not null"`
+	BaseWholesalePrice float64 `gorm:"type:decimal(10,2);not null"`
+	IsActive           bool    `gorm:"default:true"`
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 
 	// Relationships
 	Variants []ProductVariant `gorm:"foreignKey:ProductID"`
@@ -26,16 +27,17 @@ func (Product) TableName() string {
 }
 
 type ProductVariant struct {
-	ID         uint           `gorm:"primaryKey"`
-	ProductID  uint           `gorm:"not null;index"`
-	Name       string         `gorm:"not null"`
-	SKU        string         `gorm:"not null"`
-	Price      float64        `gorm:"type:decimal(10,2)"`
-	Stock      int            `gorm:"default:0"`
-	Attributes datatypes.JSON `gorm:"type:jsonb"`
-	IsActive   bool           `gorm:"default:true"`
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID               uint           `gorm:"primaryKey"`
+	ProductID        uint           `gorm:"not null;index"`
+	Name             string         `gorm:"not null"`
+	SKU              string         `gorm:"not null"`
+	RetailPrice      *float64       `gorm:"type:decimal(10,2)"` // Nullable - inherits from parent if nil
+	WholesalePrice   *float64       `gorm:"type:decimal(10,2)"` // Nullable - inherits from parent if nil
+	UseParentPricing bool           `gorm:"default:false"`
+	Attributes       datatypes.JSON `gorm:"type:jsonb"`
+	IsActive         bool           `gorm:"default:true"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 
 	// Relationships
 	Product *Product `gorm:"foreignKey:ProductID"`
@@ -47,14 +49,15 @@ func (ProductVariant) TableName() string {
 
 // Business methods for Product
 func (p *Product) IsValid() bool {
-	return p.Name != "" && p.SKU != "" && p.CompanyID > 0
+	return p.Name != "" && p.SKU != "" && p.CompanyID > 0 && p.BaseRetailPrice >= 0 && p.BaseWholesalePrice >= 0
 }
 
-func (p *Product) GetEffectivePrice() float64 {
-	if p.BasePrice > 0 {
-		return p.BasePrice
-	}
-	return 0
+func (p *Product) GetBaseRetailPrice() float64 {
+	return p.BaseRetailPrice
+}
+
+func (p *Product) GetBaseWholesalePrice() float64 {
+	return p.BaseWholesalePrice
 }
 
 // Business methods for ProductVariant
@@ -62,29 +65,47 @@ func (pv *ProductVariant) IsValid() bool {
 	return pv.Name != "" && pv.SKU != "" && pv.ProductID > 0
 }
 
-func (pv *ProductVariant) GetEffectivePrice(basePrice float64) float64 {
-	if pv.Price > 0 {
-		return pv.Price
+// GetEffectiveRetailPrice returns the effective retail price (variant-specific or inherited from product)
+func (pv *ProductVariant) GetEffectiveRetailPrice(baseRetailPrice float64) float64 {
+	if pv.UseParentPricing {
+		return baseRetailPrice
 	}
-	return basePrice
-}
-
-func (pv *ProductVariant) HasStock() bool {
-	return pv.Stock > 0
-}
-
-func (pv *ProductVariant) UpdateStock(newStock int) {
-	pv.Stock = newStock
-}
-
-func (pv *ProductVariant) AddStock(amount int) {
-	pv.Stock += amount
-}
-
-func (pv *ProductVariant) RemoveStock(amount int) bool {
-	if pv.Stock >= amount {
-		pv.Stock -= amount
-		return true
+	if pv.RetailPrice != nil && *pv.RetailPrice > 0 {
+		return *pv.RetailPrice
 	}
-	return false
+	return baseRetailPrice
+}
+
+// GetEffectiveWholesalePrice returns the effective wholesale price (variant-specific or inherited from product)
+func (pv *ProductVariant) GetEffectiveWholesalePrice(baseWholesalePrice float64) float64 {
+	if pv.UseParentPricing {
+		return baseWholesalePrice
+	}
+	if pv.WholesalePrice != nil && *pv.WholesalePrice > 0 {
+		return *pv.WholesalePrice
+	}
+	return baseWholesalePrice
+}
+
+// SetRetailPrice sets the retail price for this variant
+func (pv *ProductVariant) SetRetailPrice(price float64) {
+	if price > 0 {
+		pv.RetailPrice = &price
+		pv.UseParentPricing = false
+	}
+}
+
+// SetWholesalePrice sets the wholesale price for this variant
+func (pv *ProductVariant) SetWholesalePrice(price float64) {
+	if price > 0 {
+		pv.WholesalePrice = &price
+		pv.UseParentPricing = false
+	}
+}
+
+// UseParentPricing marks the variant to inherit pricing from parent product
+func (pv *ProductVariant) MarkUseParentPricing() {
+	pv.UseParentPricing = true
+	pv.RetailPrice = nil
+	pv.WholesalePrice = nil
 }

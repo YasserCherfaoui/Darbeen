@@ -341,8 +341,8 @@ func (h *ProductHandler) DeleteProductVariant(c *gin.Context) {
 	response.SuccessWithMessage(c, http.StatusOK, "Product variant deleted successfully", nil)
 }
 
-// Stock management endpoints
-func (h *ProductHandler) UpdateVariantStock(c *gin.Context) {
+// BulkCreateProductVariants creates multiple product variants from attribute combinations
+func (h *ProductHandler) BulkCreateProductVariants(c *gin.Context) {
 	userID, err := middleware.GetUserID(c)
 	if err != nil {
 		response.Error(c, err)
@@ -361,63 +361,17 @@ func (h *ProductHandler) UpdateVariantStock(c *gin.Context) {
 		return
 	}
 
-	variantID, err := strconv.ParseUint(c.Param("variantId"), 10, 32)
-	if err != nil {
-		response.Error(c, errors.NewBadRequestError("invalid variant id"))
-		return
-	}
-
-	var req productApp.UpdateStockRequest
+	var req productApp.BulkCreateProductVariantsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, errors.NewValidationError(err.Error()))
 		return
 	}
 
-	result, err := h.productService.UpdateVariantStock(userID, uint(companyID), uint(productID), uint(variantID), &req)
+	result, err := h.productService.BulkCreateProductVariants(userID, uint(companyID), uint(productID), &req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.SuccessWithMessage(c, http.StatusOK, "Stock updated successfully", result)
-}
-
-func (h *ProductHandler) AdjustVariantStock(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
-	if err != nil {
-		response.Error(c, errors.NewBadRequestError("invalid company id"))
-		return
-	}
-
-	productID, err := strconv.ParseUint(c.Param("productId"), 10, 32)
-	if err != nil {
-		response.Error(c, errors.NewBadRequestError("invalid product id"))
-		return
-	}
-
-	variantID, err := strconv.ParseUint(c.Param("variantId"), 10, 32)
-	if err != nil {
-		response.Error(c, errors.NewBadRequestError("invalid variant id"))
-		return
-	}
-
-	var req productApp.AdjustStockRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, errors.NewValidationError(err.Error()))
-		return
-	}
-
-	result, err := h.productService.AdjustVariantStock(userID, uint(companyID), uint(productID), uint(variantID), &req)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	response.SuccessWithMessage(c, http.StatusOK, "Stock adjusted successfully", result)
+	response.SuccessWithMessage(c, http.StatusCreated, "Product variants created successfully", result)
 }
