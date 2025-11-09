@@ -9,6 +9,7 @@ type Supplier struct {
 	ContactPerson string
 	Email         string
 	Phone         string
+	Address       string
 	IsActive      bool `gorm:"default:true"`
 	CreatedAt     time.Time
 	UpdatedAt     time.Time

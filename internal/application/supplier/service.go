@@ -111,6 +111,9 @@ func (s *Service) UpdateSupplier(userID, companyID, supplierID uint, req *Update
 	if req.Phone != "" {
 		existingSupplier.Phone = req.Phone
 	}
+	if req.Address != "" {
+		existingSupplier.Address = req.Address
+	}
 	if req.IsActive != nil {
 		existingSupplier.IsActive = *req.IsActive
 	}
@@ -179,6 +182,7 @@ func (s *Service) GetSupplierProducts(userID, companyID, supplierID uint) (*Supp
 		ContactPerson: sup.ContactPerson,
 		Email:         sup.Email,
 		Phone:         sup.Phone,
+		Address:       sup.Address,
 		IsActive:      sup.IsActive,
 		Products:      productInfos,
 	}, nil

@@ -10,6 +10,7 @@ type CreateSupplierRequest struct {
 	ContactPerson string `json:"contact_person"`
 	Email         string `json:"email" binding:"omitempty,email"`
 	Phone         string `json:"phone"`
+	Address       string `json:"address"`
 }
 
 type UpdateSupplierRequest struct {
@@ -17,6 +18,7 @@ type UpdateSupplierRequest struct {
 	ContactPerson string  `json:"contact_person"`
 	Email         string  `json:"email" binding:"omitempty,email"`
 	Phone         string  `json:"phone"`
+	Address       string  `json:"address"`
 	IsActive      *bool   `json:"is_active"`
 }
 
@@ -27,6 +29,7 @@ type SupplierResponse struct {
 	ContactPerson string `json:"contact_person"`
 	Email         string `json:"email"`
 	Phone         string `json:"phone"`
+	Address       string `json:"address"`
 	IsActive      bool   `json:"is_active"`
 	ProductCount  int    `json:"product_count"`
 }
@@ -38,6 +41,7 @@ type SupplierWithProductsResponse struct {
 	ContactPerson string                `json:"contact_person"`
 	Email         string                `json:"email"`
 	Phone         string                `json:"phone"`
+	Address       string                `json:"address"`
 	IsActive      bool                  `json:"is_active"`
 	Products      []SupplierProductInfo `json:"products"`
 }
@@ -97,6 +101,7 @@ func ToSupplierResponse(s *supplier.Supplier, productCount int) *SupplierRespons
 		ContactPerson: s.ContactPerson,
 		Email:         s.Email,
 		Phone:         s.Phone,
+		Address:       s.Address,
 		IsActive:      s.IsActive,
 		ProductCount:  productCount,
 	}
@@ -110,6 +115,7 @@ func (req *CreateSupplierRequest) ToSupplier(companyID uint) *supplier.Supplier 
 		ContactPerson: req.ContactPerson,
 		Email:         req.Email,
 		Phone:         req.Phone,
+		Address:       req.Address,
 		IsActive:      true,
 	}
 }
