@@ -46,6 +46,17 @@ type AddUserToFranchiseRequest struct {
 	Role  string `json:"role" binding:"required"`
 }
 
+type UserCredentials struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type AddUserToFranchiseResponse struct {
+	UserCreated bool             `json:"user_created"`
+	EmailSent   bool             `json:"email_sent"`
+	Credentials *UserCredentials `json:"credentials,omitempty"`
+}
+
 type UpdateUserRoleRequest struct {
 	Role string `json:"role" binding:"required"`
 }

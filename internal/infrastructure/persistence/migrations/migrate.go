@@ -7,6 +7,8 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/domain/emailqueue"
 	"github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	"github.com/YasserCherfaoui/darween/internal/domain/inventory"
+	"github.com/YasserCherfaoui/darween/internal/domain/invitation"
+	otpDomain "github.com/YasserCherfaoui/darween/internal/domain/otp"
 	"github.com/YasserCherfaoui/darween/internal/domain/pos"
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
 	"github.com/YasserCherfaoui/darween/internal/domain/smtpconfig"
@@ -21,7 +23,8 @@ import (
 func AutoMigrate(db *gorm.DB) error {
 	log.Println("Running auto-migration...")
 
-	// AutoMigrate will create tables, missing columns, missing indexes, and foreign key constraints
+	// AutoMigrate
+	// will create tables, missing columns, missing indexes, and foreign key constraints
 	// migrate only when gin_mode is release
 	if gin.Mode() == gin.ReleaseMode {
 		log.Println("Running auto-migration in release mode")
@@ -53,6 +56,8 @@ func AutoMigrate(db *gorm.DB) error {
 			&warehousebill.WarehouseBillItem{},
 			&smtpconfig.SMTPConfig{},
 			&emailqueue.EmailQueue{},
+			&invitation.Invitation{},
+			&otpDomain.OTP{},
 		)
 
 		if err != nil {

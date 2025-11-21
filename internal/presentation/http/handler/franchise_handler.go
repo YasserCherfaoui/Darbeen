@@ -240,13 +240,18 @@ func (h *FranchiseHandler) AddUserToFranchise(c *gin.Context) {
 		return
 	}
 
-	err = h.franchiseService.AddUserToFranchise(userID, uint(franchiseID), &req)
+	result, err := h.franchiseService.AddUserToFranchise(userID, uint(franchiseID), &req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.SuccessWithMessage(c, http.StatusOK, "User added to franchise successfully", nil)
+	message := "User added to franchise successfully"
+	if result.UserCreated {
+		message = "User created and added to franchise successfully"
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, message, result)
 }
 
 func (h *FranchiseHandler) RemoveUserFromFranchise(c *gin.Context) {

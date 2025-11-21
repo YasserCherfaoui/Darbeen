@@ -7,6 +7,7 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/application/auth"
 	"github.com/YasserCherfaoui/darween/internal/application/company"
 	emailApp "github.com/YasserCherfaoui/darween/internal/application/email"
+	otpApp "github.com/YasserCherfaoui/darween/internal/application/otp"
 	"github.com/YasserCherfaoui/darween/internal/application/franchise"
 	"github.com/YasserCherfaoui/darween/internal/application/inventory"
 	"github.com/YasserCherfaoui/darween/internal/application/pos"
@@ -58,6 +59,8 @@ func main() {
 	warehouseBillRepo := postgres.NewWarehouseBillRepository(db)
 	smtpConfigRepo := postgres.NewSMTPConfigRepository(db)
 	emailQueueRepo := postgres.NewEmailQueueRepository(db)
+	invitationRepo := postgres.NewInvitationRepository(db)
+	otpRepo := postgres.NewOTPRepository(db)
 	
 	// Initialize POS repositories
 	customerRepo := postgres.NewCustomerRepository(db)
@@ -77,15 +80,18 @@ func main() {
 	// Initialize email service
 	emailService := emailApp.NewService(mailingService, companyRepo)
 	
+	// Initialize OTP service
+	otpService := otpApp.NewService(otpRepo)
+	
 	// Initialize services
-	authService := auth.NewService(userRepo, jwtManager, emailService)
+	authService := auth.NewService(userRepo, companyRepo, invitationRepo, jwtManager, emailService, otpService)
 	userService := user.NewService(userRepo)
-	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo, emailService, jwtManager)
+	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo, emailService, invitationRepo, smtpConfigRepo, otpService)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
 	productService := product.NewService(productRepo, userRepo, supplierRepo)
 	supplierService := supplier.NewService(supplierRepo, userRepo, inventoryRepo, productRepo, db)
 	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, emailService)
-	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo)
+	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo, emailService, smtpConfigRepo, invitationRepo, otpService)
 	posService := pos.NewService(customerRepo, saleRepo, saleItemRepo, paymentRepo, cashDrawerRepo, cashDrawerTransactionRepo, refundRepo, userRepo, inventoryRepo, inventoryRepo, productRepo, db)
 	warehouseBillService := warehousebillApp.NewService(warehouseBillRepo, inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, emailService, db)
 	smtpConfigService := smtpconfigApp.NewService(smtpConfigRepo, userRepo)

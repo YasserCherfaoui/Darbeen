@@ -122,13 +122,18 @@ func (h *CompanyHandler) AddUserToCompany(c *gin.Context) {
 		return
 	}
 
-	err = h.companyService.AddUserToCompany(userID, uint(companyID), &req)
+	result, err := h.companyService.AddUserToCompany(userID, uint(companyID), &req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.SuccessWithMessage(c, http.StatusOK, "User added to company successfully", nil)
+	message := "User added to company successfully"
+	if result.UserCreated {
+		message = "User created and added to company successfully"
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, message, result)
 }
 
 func (h *CompanyHandler) RemoveUserFromCompany(c *gin.Context) {

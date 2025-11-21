@@ -82,3 +82,83 @@ func (h *AuthHandler) ConfirmPasswordReset(c *gin.Context) {
 
 	response.SuccessWithMessage(c, http.StatusOK, result.Message, result)
 }
+
+func (h *AuthHandler) ValidateInvitation(c *gin.Context) {
+	var req auth.ValidateInvitationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.ValidateInvitation(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *AuthHandler) AcceptInvitation(c *gin.Context) {
+	var req auth.AcceptInvitationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.AcceptInvitation(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, "Invitation accepted successfully", result)
+}
+
+func (h *AuthHandler) ValidateOTP(c *gin.Context) {
+	var req auth.ValidateOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.ValidateOTP(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *AuthHandler) CompleteUserSetup(c *gin.Context) {
+	var req auth.CompleteUserSetupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.CompleteUserSetup(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, "Account setup completed successfully", result)
+}
+
+func (h *AuthHandler) ChangePasswordWithOTP(c *gin.Context) {
+	var req auth.ChangePasswordWithOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.ChangePasswordWithOTP(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, result.Message, result)
+}

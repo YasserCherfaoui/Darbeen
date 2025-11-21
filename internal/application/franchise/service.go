@@ -1,11 +1,23 @@
 package franchise
 
 import (
+	"crypto/rand"
+	"fmt"
+	"math/big"
+	"os"
+	"strings"
+	"time"
+
+	emailApp "github.com/YasserCherfaoui/darween/internal/application/email"
+	otpApp "github.com/YasserCherfaoui/darween/internal/application/otp"
 	companyDomain "github.com/YasserCherfaoui/darween/internal/domain/company"
 	franchiseDomain "github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	inventoryDomain "github.com/YasserCherfaoui/darween/internal/domain/inventory"
+	invitationDomain "github.com/YasserCherfaoui/darween/internal/domain/invitation"
+	otpDomain "github.com/YasserCherfaoui/darween/internal/domain/otp"
 	productDomain "github.com/YasserCherfaoui/darween/internal/domain/product"
 	userDomain "github.com/YasserCherfaoui/darween/internal/domain/user"
+	smtpconfigDomain "github.com/YasserCherfaoui/darween/internal/domain/smtpconfig"
 	"github.com/YasserCherfaoui/darween/pkg/errors"
 )
 
@@ -15,6 +27,10 @@ type Service struct {
 	companyRepo   companyDomain.Repository
 	userRepo      userDomain.Repository
 	productRepo   productDomain.Repository
+	emailService  *emailApp.Service
+	smtpRepo      smtpconfigDomain.Repository
+	invitationRepo invitationDomain.Repository
+	otpService    *otpApp.Service
 }
 
 func NewService(
@@ -23,6 +39,10 @@ func NewService(
 	companyRepo companyDomain.Repository,
 	userRepo userDomain.Repository,
 	productRepo productDomain.Repository,
+	emailService *emailApp.Service,
+	smtpRepo smtpconfigDomain.Repository,
+	invitationRepo invitationDomain.Repository,
+	otpService *otpApp.Service,
 ) *Service {
 	return &Service{
 		franchiseRepo: franchiseRepo,
@@ -30,6 +50,10 @@ func NewService(
 		companyRepo:   companyRepo,
 		userRepo:      userRepo,
 		productRepo:   productRepo,
+		emailService:  emailService,
+		smtpRepo:      smtpRepo,
+		invitationRepo: invitationRepo,
+		otpService:    otpService,
 	}
 }
 
@@ -383,10 +407,54 @@ func (s *Service) BulkSetFranchisePricing(userID, franchiseID uint, req *BulkSet
 	}, nil
 }
 
-func (s *Service) AddUserToFranchise(requestUserID, franchiseID uint, req *AddUserToFranchiseRequest) error {
+// generateRandomPassword generates a secure random password
+func generateRandomPassword(length int) (string, error) {
+	if length < 12 {
+		length = 12
+	}
+	
+	// Character sets for password generation
+	const (
+		lowercase = "abcdefghijklmnopqrstuvwxyz"
+		uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		digits    = "0123456789"
+		special   = "!@#$%^&*"
+	)
+	allChars := lowercase + uppercase + digits + special
+	
+	// Ensure at least one character from each set
+	password := make([]byte, length)
+	
+	// First 4 characters: one from each set
+	password[0] = lowercase[getRandomInt(len(lowercase))]
+	password[1] = uppercase[getRandomInt(len(uppercase))]
+	password[2] = digits[getRandomInt(len(digits))]
+	password[3] = special[getRandomInt(len(special))]
+	
+	// Fill the rest with random characters from all sets
+	for i := 4; i < length; i++ {
+		password[i] = allChars[getRandomInt(len(allChars))]
+	}
+	
+	// Shuffle the password
+	for i := len(password) - 1; i > 0; i-- {
+		j := getRandomInt(i + 1)
+		password[i], password[j] = password[j], password[i]
+	}
+	
+	return string(password), nil
+}
+
+// getRandomInt returns a random integer in [0, max)
+func getRandomInt(max int) int {
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(max)))
+	return int(n.Int64())
+}
+
+func (s *Service) AddUserToFranchise(requestUserID, franchiseID uint, req *AddUserToFranchiseRequest) (*AddUserToFranchiseResponse, error) {
 	franchise, err := s.franchiseRepo.FindByID(franchiseID)
 	if err != nil {
-		return errors.NewNotFoundError("franchise not found")
+		return nil, errors.NewNotFoundError("franchise not found")
 	}
 
 	// Check if requester has permission (parent company admin or franchise admin)
@@ -395,25 +463,49 @@ func (s *Service) AddUserToFranchise(requestUserID, franchiseID uint, req *AddUs
 
 	if (parentRole == nil || (parentRole.Role != userDomain.RoleOwner && parentRole.Role != userDomain.RoleAdmin)) &&
 		(franchiseRole == nil || (franchiseRole.Role != userDomain.RoleOwner && franchiseRole.Role != userDomain.RoleAdmin)) {
-		return errors.NewForbiddenError("only owners and admins can add users to franchise")
-	}
-
-	// Find user by email
-	targetUser, err := s.userRepo.FindByEmail(req.Email)
-	if err != nil {
-		return errors.NewNotFoundError("user not found")
+		return nil, errors.NewForbiddenError("only owners and admins can add users to franchise")
 	}
 
 	// Validate role
 	role := userDomain.Role(req.Role)
 	if !role.IsValid() {
-		return errors.NewValidationError("invalid role")
+		return nil, errors.NewValidationError("invalid role")
+	}
+
+	// Find user by email or create if not found
+	targetUser, err := s.userRepo.FindByEmail(req.Email)
+	userCreated := false
+	var generatedPassword string
+
+	if err != nil {
+		// User not found, create new user with random password
+		generatedPassword, err = generateRandomPassword(16)
+		if err != nil {
+			return nil, errors.NewInternalError("failed to generate password", err)
+		}
+
+		targetUser = &userDomain.User{
+			Email:     req.Email,
+			FirstName: "",
+			LastName:  "",
+			IsActive:  true,
+		}
+
+		if err := targetUser.HashPassword(generatedPassword); err != nil {
+			return nil, errors.NewInternalError("failed to hash password", err)
+		}
+
+		if err := s.userRepo.Create(targetUser); err != nil {
+			return nil, errors.NewInternalError("failed to create user", err)
+		}
+
+		userCreated = true
 	}
 
 	// Check if user already belongs to franchise
 	existingRole, _ := s.userRepo.FindUserRoleInFranchise(targetUser.ID, franchiseID)
 	if existingRole != nil {
-		return errors.NewConflictError("user already belongs to this franchise")
+		return nil, errors.NewConflictError("user already belongs to this franchise")
 	}
 
 	// Create user-franchise relationship
@@ -425,10 +517,107 @@ func (s *Service) AddUserToFranchise(requestUserID, franchiseID uint, req *AddUs
 	}
 
 	if err := s.userRepo.CreateUserFranchiseRole(ufr); err != nil {
-		return errors.NewInternalError("failed to add user to franchise", err)
+		return nil, errors.NewInternalError("failed to add user to franchise", err)
 	}
 
-	return nil
+	// Get company info for email
+	company, err := s.companyRepo.FindByID(franchise.ParentCompanyID)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to fetch company", err)
+	}
+
+	// Get inviter name
+	inviter, _ := s.userRepo.FindByID(requestUserID)
+	inviterName := "A team member"
+	if inviter != nil {
+		if inviter.FirstName != "" {
+			inviterName = fmt.Sprintf("%s %s", inviter.FirstName, inviter.LastName)
+		} else {
+			inviterName = inviter.Email
+		}
+	}
+
+	// Check if company has default SMTP config
+	defaultSMTPConfig, _ := s.smtpRepo.FindDefaultByCompanyID(franchise.ParentCompanyID)
+	emailSent := false
+
+	// Build base URL from company ERPUrl or fallback to env/default
+	baseURL := company.ERPUrl
+	if baseURL == "" {
+		baseURL = os.Getenv("FRONTEND_URL")
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:3000"
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	if defaultSMTPConfig != nil {
+		if userCreated {
+			// New user - generate OTP and send setup email with credentials
+			franchiseIDPtr := &franchiseID
+			otpCode, err := s.otpService.GenerateOTP(
+				targetUser.Email,
+				targetUser.ID,
+				franchise.ParentCompanyID,
+				franchiseIDPtr,
+				otpDomain.PurposeSetupAccount,
+				24*time.Hour, // 24 hours expiry
+			)
+			if err == nil {
+				setupURL := fmt.Sprintf("%s/setup-account?otp=%s&email=%s", baseURL, otpCode, targetUser.Email)
+
+				// Send new user setup email
+				emailReq := &emailApp.SendNewUserSetupEmailRequest{
+					CompanyID:   franchise.ParentCompanyID,
+					UserEmail:   targetUser.Email,
+					Password:    generatedPassword,
+					InviterName: inviterName,
+					OTPCode:     otpCode,
+					SetupURL:    setupURL,
+					CompanyName: company.Name,
+				}
+
+				if err := s.emailService.SendNewUserSetupEmail(emailReq); err != nil {
+					fmt.Printf("Failed to send new user setup email: %v\n", err)
+				} else {
+					emailSent = true
+				}
+			}
+		} else {
+			// Existing user - send welcome email with role
+			loginURL := fmt.Sprintf("%s/login", baseURL)
+
+			emailReq := &emailApp.SendWelcomeEmailRequest{
+				CompanyID:   franchise.ParentCompanyID,
+				UserEmail:   targetUser.Email,
+				InviterName: inviterName,
+				Role:        role.String(),
+				LoginURL:    loginURL,
+				CompanyName: company.Name,
+			}
+
+			if err := s.emailService.SendWelcomeEmail(emailReq); err != nil {
+				fmt.Printf("Failed to send welcome email: %v\n", err)
+			} else {
+				emailSent = true
+			}
+		}
+	}
+
+	// Return response with credentials if user was created
+	response := &AddUserToFranchiseResponse{
+		UserCreated: userCreated,
+		EmailSent:   emailSent,
+	}
+
+	if userCreated && generatedPassword != "" {
+		response.Credentials = &UserCredentials{
+			Email:    targetUser.Email,
+			Password: generatedPassword,
+		}
+	}
+
+	return response, nil
 }
 
 func (s *Service) RemoveUserFromFranchise(requestUserID, franchiseID, targetUserID uint) error {

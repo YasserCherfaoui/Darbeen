@@ -55,3 +55,31 @@ type SendNotificationEmailRequest struct {
 	Message   string
 }
 
+type SendCredentialsEmailRequest struct {
+	CompanyID   uint
+	UserEmail   string
+	Password    string
+	InviterName string
+	LoginURL    string
+	CompanyName string
+}
+
+type SendWelcomeEmailRequest struct {
+	CompanyID   uint
+	UserEmail   string
+	InviterName string
+	Role        string
+	LoginURL    string
+	CompanyName string
+}
+
+type SendNewUserSetupEmailRequest struct {
+	CompanyID   uint
+	UserEmail   string
+	Password    string
+	InviterName string
+	OTPCode     string
+	SetupURL    string
+	CompanyName string
+}
+

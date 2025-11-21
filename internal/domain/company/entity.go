@@ -7,7 +7,8 @@ type Company struct {
 	Name        string `gorm:"not null;default:''"` // Allow empty string as default
 	Code        string `gorm:"not null;default:''"` // Remove unique constraint temporarily
 	Description string
-	IsActive    bool `gorm:"default:true"`
+	ERPUrl      string `gorm:"default:''"` // Frontend/ERP URL for this company
+	IsActive    bool   `gorm:"default:true"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

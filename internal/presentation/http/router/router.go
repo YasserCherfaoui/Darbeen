@@ -69,6 +69,11 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		auth.POST("/login", r.authHandler.Login)
 		auth.POST("/password-reset/request", r.authHandler.RequestPasswordReset)
 		auth.POST("/password-reset/confirm", r.authHandler.ConfirmPasswordReset)
+		auth.POST("/invitation/validate", r.authHandler.ValidateInvitation)
+		auth.POST("/invitation/accept", r.authHandler.AcceptInvitation)
+		auth.POST("/otp/validate", r.authHandler.ValidateOTP)
+		auth.POST("/otp/setup", r.authHandler.CompleteUserSetup)
+		auth.POST("/otp/change-password", r.authHandler.ChangePasswordWithOTP)
 	}
 
 	// Protected routes

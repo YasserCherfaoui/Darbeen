@@ -167,3 +167,86 @@ func (s *Service) SendNotificationEmail(req *SendNotificationEmailRequest) error
 	)
 }
 
+// SendCredentialsEmail sends credentials email to newly created user
+func (s *Service) SendCredentialsEmail(req *SendCredentialsEmailRequest) error {
+	data := mailing.EmailTemplateData{
+		CompanyName: req.CompanyName,
+		UserName:    req.UserEmail,
+		CustomData: map[string]interface{}{
+			"password":    req.Password,
+			"inviterName": req.InviterName,
+			"loginURL":    req.LoginURL,
+		},
+	}
+	
+	htmlBody, plainBody := mailing.GenerateCredentialsEmail(data)
+	_ = plainBody
+	
+	return s.mailingService.QueueEmailWithType(
+		req.CompanyID,
+		nil, // Use default SMTP config
+		[]string{req.UserEmail},
+		fmt.Sprintf("Welcome to %s - Your Account Credentials", req.CompanyName),
+		htmlBody,
+		true, // IsHTML
+		emailqueue.EmailTypeNotification,
+		nil, // ScheduledAt
+	)
+}
+
+// SendWelcomeEmail sends a welcome email to existing users who have been added to a company/franchise
+func (s *Service) SendWelcomeEmail(req *SendWelcomeEmailRequest) error {
+	data := mailing.EmailTemplateData{
+		CompanyName: req.CompanyName,
+		UserName:    req.UserEmail,
+		InviterName: req.InviterName,
+		Role:        req.Role,
+		CustomData: map[string]interface{}{
+			"loginURL": req.LoginURL,
+		},
+	}
+
+	htmlBody, plainBody := mailing.GenerateWelcomeEmail(data)
+	_ = plainBody
+
+	return s.mailingService.QueueEmailWithType(
+		req.CompanyID,
+		nil, // Use default SMTP config
+		[]string{req.UserEmail},
+		fmt.Sprintf("Welcome to %s", req.CompanyName),
+		htmlBody,
+		true, // IsHTML
+		emailqueue.EmailTypeNotification,
+		nil, // ScheduledAt
+	)
+}
+
+// SendNewUserSetupEmail sends a setup email to newly created users with credentials and OTP
+func (s *Service) SendNewUserSetupEmail(req *SendNewUserSetupEmailRequest) error {
+	data := mailing.EmailTemplateData{
+		CompanyName: req.CompanyName,
+		UserName:    req.UserEmail,
+		OTPCode:     req.OTPCode,
+		SetupURL:    req.SetupURL,
+		CustomData: map[string]interface{}{
+			"password":    req.Password,
+			"inviterName": req.InviterName,
+			"setupURL":    req.SetupURL,
+		},
+	}
+
+	htmlBody, plainBody := mailing.GenerateNewUserSetupEmail(data)
+	_ = plainBody
+
+	return s.mailingService.QueueEmailWithType(
+		req.CompanyID,
+		nil, // Use default SMTP config
+		[]string{req.UserEmail},
+		fmt.Sprintf("Welcome to %s - Complete Your Account Setup", req.CompanyName),
+		htmlBody,
+		true, // IsHTML
+		emailqueue.EmailTypeNotification,
+		nil, // ScheduledAt
+	)
+}
+

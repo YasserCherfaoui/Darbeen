@@ -248,19 +248,52 @@ func (m *MailingService) sendEmailDirectly(email *emailqueue.EmailQueue, config 
 		return fmt.Errorf("failed to unmarshal recipients: %w", err)
 	}
 
-	// Build email message
+	// Build email message with proper headers to reduce spam
 	var msg bytes.Buffer
-	msg.WriteString(fmt.Sprintf("From: %s <%s>\r\n", config.FromName, config.User))
+
+	// From header
+	fromName := config.FromName
+	if fromName == "" {
+		fromName = "Darween ERP"
+	}
+	msg.WriteString(fmt.Sprintf("From: %s <%s>\r\n", fromName, config.User))
+
+	// To header
 	msg.WriteString(fmt.Sprintf("To: %s\r\n", to[0]))
 	if len(to) > 1 {
 		msg.WriteString(fmt.Sprintf("Cc: %s\r\n", to[1:]))
 	}
+
+	// Reply-To (same as From to avoid spam)
+	msg.WriteString(fmt.Sprintf("Reply-To: %s\r\n", config.User))
+
+	// Subject
 	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", email.Subject))
+
+	// Date
+	msg.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+
+	// Message-ID (helps with email deliverability)
+	messageID := fmt.Sprintf("<%d-%d@%s>", time.Now().Unix(), email.ID, config.Host)
+	msg.WriteString(fmt.Sprintf("Message-ID: %s\r\n", messageID))
+
+	// MIME-Version
+	msg.WriteString("MIME-Version: 1.0\r\n")
+
+	// Content-Type
 	if email.IsHTML {
 		msg.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
 	} else {
 		msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	}
+
+	// X-Mailer (identifies the sending application)
+	msg.WriteString("X-Mailer: Darween ERP System\r\n")
+
+	// X-Priority (normal priority)
+	msg.WriteString("X-Priority: 3\r\n")
+
+	// Empty line before body
 	msg.WriteString("\r\n")
 	msg.WriteString(email.Body)
 
