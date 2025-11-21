@@ -85,14 +85,14 @@ func main() {
 	
 	// Initialize services
 	authService := auth.NewService(userRepo, companyRepo, invitationRepo, jwtManager, emailService, otpService)
-	userService := user.NewService(userRepo)
+	userService := user.NewService(userRepo, companyRepo, franchiseRepo)
 	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo, emailService, invitationRepo, smtpConfigRepo, otpService)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
-	productService := product.NewService(productRepo, userRepo, supplierRepo)
+	productService := product.NewService(productRepo, userRepo, supplierRepo, franchiseRepo)
 	supplierService := supplier.NewService(supplierRepo, userRepo, inventoryRepo, productRepo, db)
 	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, emailService)
 	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo, emailService, smtpConfigRepo, invitationRepo, otpService)
-	posService := pos.NewService(customerRepo, saleRepo, saleItemRepo, paymentRepo, cashDrawerRepo, cashDrawerTransactionRepo, refundRepo, userRepo, inventoryRepo, inventoryRepo, productRepo, db)
+	posService := pos.NewService(customerRepo, saleRepo, saleItemRepo, paymentRepo, cashDrawerRepo, cashDrawerTransactionRepo, refundRepo, userRepo, inventoryRepo, inventoryRepo, productRepo, franchiseRepo, db)
 	warehouseBillService := warehousebillApp.NewService(warehouseBillRepo, inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, emailService, db)
 	smtpConfigService := smtpconfigApp.NewService(smtpConfigRepo, userRepo)
 

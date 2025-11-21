@@ -99,7 +99,18 @@ func (h *ProductHandler) GetProduct(c *gin.Context) {
 		return
 	}
 
-	result, err := h.productService.GetProductByID(userID, uint(companyID), uint(productID))
+	// Check for optional franchise_id query parameter
+	var franchiseID *uint
+	franchiseIDStr := c.Query("franchise_id")
+	if franchiseIDStr != "" {
+		franchiseID64, err := strconv.ParseUint(franchiseIDStr, 10, 32)
+		if err == nil {
+			id := uint(franchiseID64)
+			franchiseID = &id
+		}
+	}
+
+	result, err := h.productService.GetProductByIDWithFranchise(userID, uint(companyID), uint(productID), franchiseID)
 	if err != nil {
 		response.Error(c, err)
 		return

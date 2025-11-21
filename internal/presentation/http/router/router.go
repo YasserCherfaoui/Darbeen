@@ -85,6 +85,8 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 	{
 		users.GET("/me", r.userHandler.GetMe)
 		users.PUT("/me", r.userHandler.UpdateMe)
+		users.PUT("/me/password", r.userHandler.ChangePassword)
+		users.GET("/me/portals", r.userHandler.GetUserPortals)
 		users.GET("", r.userHandler.ListUsers)
 	}
 
@@ -174,6 +176,8 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.GET("/:companyId/pos/customers/:customerId", r.posHandler.GetCustomer)
 		companies.PUT("/:companyId/pos/customers/:customerId", r.posHandler.UpdateCustomer)
 		companies.DELETE("/:companyId/pos/customers/:customerId", r.posHandler.DeleteCustomer)
+
+		companies.GET("/:companyId/pos/products/search", r.posHandler.SearchProducts)
 
 		companies.POST("/:companyId/pos/sales", r.posHandler.CreateSale)
 		companies.GET("/:companyId/pos/sales", r.posHandler.ListSales)

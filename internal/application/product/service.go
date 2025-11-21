@@ -3,6 +3,7 @@ package product
 import (
 	"encoding/json"
 
+	franchiseDomain "github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
 	"github.com/YasserCherfaoui/darween/internal/domain/supplier"
 	"github.com/YasserCherfaoui/darween/internal/domain/user"
@@ -11,16 +12,18 @@ import (
 )
 
 type Service struct {
-	productRepo  product.Repository
-	userRepo     user.Repository
-	supplierRepo supplier.Repository
+	productRepo   product.Repository
+	userRepo      user.Repository
+	supplierRepo  supplier.Repository
+	franchiseRepo franchiseDomain.Repository
 }
 
-func NewService(productRepo product.Repository, userRepo user.Repository, supplierRepo supplier.Repository) *Service {
+func NewService(productRepo product.Repository, userRepo user.Repository, supplierRepo supplier.Repository, franchiseRepo franchiseDomain.Repository) *Service {
 	return &Service{
-		productRepo:  productRepo,
-		userRepo:     userRepo,
-		supplierRepo: supplierRepo,
+		productRepo:   productRepo,
+		userRepo:      userRepo,
+		supplierRepo:  supplierRepo,
+		franchiseRepo: franchiseRepo,
 	}
 }
 
@@ -78,6 +81,10 @@ func (s *Service) GetProductsByCompanyID(userID, companyID uint, page, limit int
 }
 
 func (s *Service) GetProductByID(userID, companyID, productID uint) (*ProductResponse, error) {
+	return s.GetProductByIDWithFranchise(userID, companyID, productID, nil)
+}
+
+func (s *Service) GetProductByIDWithFranchise(userID, companyID, productID uint, franchiseID *uint) (*ProductResponse, error) {
 	// Check user authorization
 	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
 		return nil, err
@@ -88,7 +95,90 @@ func (s *Service) GetProductByID(userID, companyID, productID uint) (*ProductRes
 		return nil, errors.NewNotFoundError("product not found")
 	}
 
-	return ToProductResponse(product), nil
+	response := ToProductResponse(product)
+
+	// If franchiseID is provided or we can determine it from user's franchises,
+	// fetch and apply franchise-specific pricing
+	var activeFranchiseID *uint
+	if franchiseID != nil {
+		activeFranchiseID = franchiseID
+	} else {
+		// Try to find user's active franchise for this company
+		franchiseRoles, _ := s.userRepo.FindUserFranchisesByUserID(userID)
+		for _, franchiseRole := range franchiseRoles {
+			if franchiseRole.IsActive {
+				franchise, err := s.franchiseRepo.FindByID(franchiseRole.FranchiseID)
+				if err == nil && franchise.ParentCompanyID == companyID {
+					activeFranchiseID = &franchise.ID
+					break
+				}
+			}
+		}
+	}
+
+	// Apply franchise pricing if available
+	if activeFranchiseID != nil {
+		s.applyFranchisePricing(response, *activeFranchiseID)
+	}
+
+	return response, nil
+}
+
+// applyFranchisePricing applies franchise-specific pricing to product variants
+// If franchise has specific pricing for a variant, it replaces the default pricing
+// If franchise doesn't have pricing for a variant, that variant's pricing is hidden
+func (s *Service) applyFranchisePricing(response *ProductResponse, franchiseID uint) {
+	// Fetch all franchise pricing for this franchise
+	franchisePricings, err := s.franchiseRepo.FindAllPricingByFranchise(franchiseID)
+	if err != nil {
+		// If we can't fetch pricing, hide all pricing
+		response.BaseRetailPrice = 0
+		response.BaseWholesalePrice = 0
+		for i := range response.Variants {
+			response.Variants[i].RetailPrice = nil
+			response.Variants[i].WholesalePrice = nil
+		}
+		return
+	}
+
+	// Create a map of variant ID to franchise pricing
+	pricingMap := make(map[uint]*franchiseDomain.FranchisePricing)
+	for _, pricing := range franchisePricings {
+		if pricing.IsActive {
+			pricingMap[pricing.ProductVariantID] = pricing
+		}
+	}
+
+	// Apply franchise pricing to variants
+	for i := range response.Variants {
+		variant := &response.Variants[i]
+		if pricing, exists := pricingMap[variant.ID]; exists {
+			// Franchise has pricing for this variant - show only franchise pricing
+			if pricing.HasRetailOverride() {
+				retailPrice := pricing.GetEffectiveRetailPrice()
+				variant.RetailPrice = retailPrice
+			} else {
+				// No retail override, don't show retail price
+				variant.RetailPrice = nil
+			}
+
+			if pricing.HasWholesaleOverride() {
+				wholesalePrice := pricing.GetEffectiveWholesalePrice()
+				variant.WholesalePrice = wholesalePrice
+			} else {
+				// No wholesale override, don't show wholesale price
+				variant.WholesalePrice = nil
+			}
+		} else {
+			// No franchise pricing for this variant, hide default pricing
+			variant.RetailPrice = nil
+			variant.WholesalePrice = nil
+		}
+	}
+
+	// Hide base product pricing for franchises (they only see variant pricing)
+	response.BaseRetailPrice = 0
+	response.BaseWholesalePrice = 0
 }
 
 func (s *Service) UpdateProduct(userID, companyID, productID uint, req *UpdateProductRequest) (*ProductResponse, error) {
@@ -332,18 +422,39 @@ func (s *Service) DeleteProductVariant(userID, companyID, productID, variantID u
 }
 
 // Helper function to check user access to company
+// Also checks if user has franchise access through a franchise whose parent is this company
 func (s *Service) checkUserCompanyAccess(userID, companyID uint, minRole user.Role) error {
+	// First check direct company access
 	userRole, err := s.userRepo.FindUserRoleInCompany(userID, companyID)
+	if err == nil {
+		// User has direct company access, check role
+		if s.hasSufficientRole(userRole.Role, minRole) {
+			return nil
+		}
+	}
+
+	// If no direct company access, check if user has franchise access
+	// through a franchise whose parent company is this company
+	franchiseRoles, err := s.userRepo.FindUserFranchisesByUserID(userID)
 	if err != nil {
-		return errors.NewForbiddenError("you don't have access to this company")
+		return errors.NewForbiddenError("access denied to this company")
 	}
 
-	// Check if user has sufficient role
-	if !s.hasSufficientRole(userRole.Role, minRole) {
-		return errors.NewForbiddenError("insufficient permissions for this operation")
+	for _, franchiseRole := range franchiseRoles {
+		franchise, err := s.franchiseRepo.FindByID(franchiseRole.FranchiseID)
+		if err != nil {
+			continue
+		}
+		// Check if this franchise's parent is the company we're accessing
+		if franchise.ParentCompanyID == companyID && franchiseRole.IsActive {
+			// User has access through franchise, check role
+			if s.hasSufficientRole(franchiseRole.Role, minRole) {
+				return nil
+			}
+		}
 	}
 
-	return nil
+	return errors.NewForbiddenError("access denied to this company")
 }
 
 // Helper function to check role hierarchy

@@ -439,6 +439,46 @@ type ReceiptResponse struct {
 	Payments       []PaymentResponse  `json:"payments"`
 }
 
+// Product Search DTOs
+
+type SearchProductsRequest struct {
+	Query       string `form:"query" binding:"required"`
+	FranchiseID *uint  `form:"franchise_id"`
+	Limit       int    `form:"limit" binding:"omitempty,min=1,max=100"`
+}
+
+// ProductVariantSearchResponse represents a product variant search result with retail pricing for POS
+type ProductVariantSearchResponse struct {
+	// Variant details
+	VariantID   uint   `json:"variant_id"`
+	VariantName string `json:"variant_name"`
+	VariantSKU  string `json:"variant_sku"`
+	
+	// Product details
+	ProductID   uint   `json:"product_id"`
+	ProductName string `json:"product_name"`
+	ProductSKU  string `json:"product_sku"`
+	
+	// Base pricing (from product or variant)
+	BaseRetailPrice    float64 `json:"base_retail_price"`
+	BaseWholesalePrice float64 `json:"base_wholesale_price"`
+	
+	// Variant-specific pricing (if not using parent pricing)
+	VariantRetailPrice    *float64 `json:"variant_retail_price,omitempty"`
+	VariantWholesalePrice *float64 `json:"variant_wholesale_price,omitempty"`
+	
+	// Franchise pricing (if available)
+	FranchiseRetailPrice    *float64 `json:"franchise_retail_price,omitempty"`
+	FranchiseWholesalePrice *float64 `json:"franchise_wholesale_price,omitempty"`
+	
+	// Effective pricing (franchise override > variant > product base) - for sales, we use retail price
+	EffectiveRetailPrice    float64 `json:"effective_retail_price"`
+	EffectiveWholesalePrice float64 `json:"effective_wholesale_price"`
+	
+	// Flags
+	UseParentPricing bool `json:"use_parent_pricing"`
+}
+
 // Generate receipt number
 func GenerateReceiptNumber(companyID uint, saleID uint) string {
 	timestamp := time.Now().Format("20060102")

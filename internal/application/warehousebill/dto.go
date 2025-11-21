@@ -78,8 +78,9 @@ type CreateExitBillRequest struct {
 
 // CreateEntryBillRequest represents a request to create an entry bill
 type CreateEntryBillRequest struct {
-	ExitBillID uint `json:"exit_bill_id" binding:"required"`
-	Notes      string `json:"notes"`
+	ExitBillID uint                        `json:"exit_bill_id" binding:"required"`
+	Notes      string                      `json:"notes"`
+	Items      []VerifyEntryBillItemRequest `json:"items" binding:"required,min=1"`
 }
 
 // VerifyEntryBillItemRequest represents an item in a verification request

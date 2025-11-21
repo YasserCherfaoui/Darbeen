@@ -234,7 +234,7 @@ func (s *Service) CreateExitBill(userID, companyID uint, req *CreateExitBillRequ
 	return response, nil
 }
 
-// CreateEntryBill creates an entry bill linked to an exit bill
+// CreateEntryBill creates an entry bill linked to an exit bill with verification and inventory updates
 func (s *Service) CreateEntryBill(userID, franchiseID uint, req *CreateEntryBillRequest) (*WarehouseBillResponse, error) {
 	// Check user authorization (franchise access)
 	franchise, err := s.franchiseRepo.FindByID(franchiseID)
@@ -274,6 +274,18 @@ func (s *Service) CreateEntryBill(userID, franchiseID uint, req *CreateEntryBill
 		return nil, errors.NewConflictError("entry bill already exists for this exit bill")
 	}
 
+	// Create map of received items by product variant ID
+	receivedItemsMap := make(map[uint]int)
+	for _, receivedItem := range req.Items {
+		receivedItemsMap[receivedItem.ProductVariantID] = receivedItem.ReceivedQuantity
+	}
+
+	// Create map of expected items from exit bill
+	expectedItemsMap := make(map[uint]int)
+	for _, exitItem := range exitBill.Items {
+		expectedItemsMap[exitItem.ProductVariantID] = exitItem.Quantity
+	}
+
 	// Start transaction
 	tx := s.db.Begin()
 	defer func() {
@@ -282,20 +294,97 @@ func (s *Service) CreateEntryBill(userID, franchiseID uint, req *CreateEntryBill
 		}
 	}()
 
-	// Create entry bill items from exit bill items
-	billItems := make([]warehousebill.WarehouseBillItem, len(exitBill.Items))
+	hasDiscrepancies := false
+	var billItems []warehousebill.WarehouseBillItem
 	totalAmount := 0.0
-	for i, exitItem := range exitBill.Items {
+
+	// Process items from exit bill
+	for _, exitItem := range exitBill.Items {
+		expectedQty := exitItem.Quantity
+		receivedQty := receivedItemsMap[exitItem.ProductVariantID]
+
 		item := warehousebill.WarehouseBillItem{
 			ProductVariantID: exitItem.ProductVariantID,
-			ExpectedQuantity: exitItem.Quantity, // Copy expected quantity from exit bill
-			Quantity:         exitItem.Quantity, // Keep for consistency
+			ExpectedQuantity: expectedQty,
+			Quantity:         expectedQty, // Keep for consistency
 			UnitPrice:        exitItem.UnitPrice,
-			DiscrepancyType:  warehousebill.DiscrepancyTypeNone,
 		}
-		item.CalculateTotal()
-		billItems[i] = item
+
+		if receivedQty == 0 && expectedQty > 0 {
+			// Missing item
+			item.ReceivedQuantity = nil
+			item.SetDiscrepancy(
+				warehousebill.DiscrepancyTypeMissing,
+				fmt.Sprintf("Expected %d, received 0", expectedQty),
+			)
+			item.CalculateTotal()
+			hasDiscrepancies = true
+		} else if receivedQty != expectedQty {
+			// Quantity mismatch
+			item.ReceivedQuantity = &receivedQty
+			item.SetDiscrepancy(
+				warehousebill.DiscrepancyTypeQuantityMismatch,
+				fmt.Sprintf("Expected %d, received %d", expectedQty, receivedQty),
+			)
+			item.CalculateTotal()
+			hasDiscrepancies = true
+		} else {
+			// No discrepancy
+			item.ReceivedQuantity = &receivedQty
+			item.SetDiscrepancy(warehousebill.DiscrepancyTypeNone, "")
+			item.CalculateTotal()
+		}
+
+		billItems = append(billItems, item)
 		totalAmount += item.TotalAmount
+	}
+
+	// Check for extra items (in received items but not in exit bill)
+	for variantID, receivedQty := range receivedItemsMap {
+		if receivedQty > 0 {
+			// Check if this variant is already in bill items
+			found := false
+			for _, item := range billItems {
+				if item.ProductVariantID == variantID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				// Extra item - add to bill items
+				extraItem := warehousebill.WarehouseBillItem{
+					ProductVariantID: variantID,
+					ExpectedQuantity: 0,
+					ReceivedQuantity: &receivedQty,
+					Quantity:         0,
+					UnitPrice:        0,
+					DiscrepancyType:  warehousebill.DiscrepancyTypeExtra,
+				}
+
+				// Try to get unit price from product variant
+				variant, err := s.productRepo.FindProductVariantByID(variantID)
+				if err == nil {
+					if variant.RetailPrice != nil && *variant.RetailPrice > 0 {
+						extraItem.UnitPrice = *variant.RetailPrice
+					} else {
+						// Try to get from product base price
+						product, err := s.productRepo.FindProductByID(variant.ProductID)
+						if err == nil {
+							extraItem.UnitPrice = product.BaseRetailPrice
+						}
+					}
+				}
+
+				extraItem.SetDiscrepancy(
+					warehousebill.DiscrepancyTypeExtra,
+					fmt.Sprintf("Extra item: received %d (not expected)", receivedQty),
+				)
+				extraItem.CalculateTotal()
+				billItems = append(billItems, extraItem)
+				totalAmount += extraItem.TotalAmount
+				hasDiscrepancies = true
+			}
+		}
 	}
 
 	// Create entry bill
@@ -304,12 +393,17 @@ func (s *Service) CreateEntryBill(userID, franchiseID uint, req *CreateEntryBill
 		FranchiseID:        franchiseID,
 		BillType:           warehousebill.BillTypeEntry,
 		RelatedBillID:      &exitBill.ID,
-		Status:             warehousebill.BillStatusDraft,
-		VerificationStatus: warehousebill.VerificationStatusPending,
 		TotalAmount:        totalAmount,
 		Notes:              req.Notes,
 		CreatedByID:        userID,
 		Items:              billItems,
+	}
+
+	// Set verification status
+	if hasDiscrepancies {
+		bill.MarkDiscrepanciesFound(userID)
+	} else {
+		bill.MarkVerified(userID)
 	}
 
 	if !bill.IsValid() {
@@ -317,23 +411,179 @@ func (s *Service) CreateEntryBill(userID, franchiseID uint, req *CreateEntryBill
 		return nil, errors.NewValidationError("invalid bill data")
 	}
 
-	if err := s.warehouseBillRepo.Create(bill); err != nil {
+	// Create entry bill within transaction (GORM will cascade create items)
+	if err := tx.Create(bill).Error; err != nil {
 		tx.Rollback()
 		return nil, errors.NewInternalError("failed to create entry bill", err)
 	}
 
+	// Generate and update bill number (matching repository format: WB-ENTRY-{companyID}-{timestamp}-{billID})
+	bill.BillNumber = fmt.Sprintf("WB-ENTRY-%d-%s-%d", bill.CompanyID, time.Now().Format("20060102"), bill.ID)
+	if err := tx.Save(bill).Error; err != nil {
+		tx.Rollback()
+		return nil, errors.NewInternalError("failed to update bill number", err)
+	}
+
+	// Update inventory for each item
+	for _, item := range bill.Items {
+		receivedQty := 0
+		if item.ReceivedQuantity != nil {
+			receivedQty = *item.ReceivedQuantity
+		}
+
+		// Handle missing items: Release reserved stock from company
+		if receivedQty == 0 && item.DiscrepancyType == warehousebill.DiscrepancyTypeMissing {
+			var companyInvDB inventory.Inventory
+			if err := tx.Where("product_variant_id = ? AND company_id = ?", item.ProductVariantID, exitBill.CompanyID).First(&companyInvDB).Error; err != nil {
+				// Inventory not found - skip (might have been handled already)
+				continue
+			}
+
+			previousReservedStock := companyInvDB.ReservedStock
+			companyInvDB.ReleaseStock(item.ExpectedQuantity)
+			if err := tx.Save(&companyInvDB).Error; err != nil {
+				tx.Rollback()
+				return nil, errors.NewInternalError("failed to update company inventory", err)
+			}
+
+			// Create inventory movement
+			refType := "warehouse_bill"
+			refID := fmt.Sprintf("%d", bill.ID)
+			notes := fmt.Sprintf("Missing item - released reserved stock")
+			movement := &inventory.InventoryMovement{
+				InventoryID:   companyInvDB.ID,
+				MovementType:  inventory.MovementTypeRelease,
+				Quantity:      item.ExpectedQuantity,
+				PreviousStock: previousReservedStock,
+				NewStock:      companyInvDB.ReservedStock,
+				ReferenceType: &refType,
+				ReferenceID:   &refID,
+				Notes:         &notes,
+				CreatedByID:   userID,
+			}
+			if err := tx.Create(movement).Error; err != nil {
+				tx.Rollback()
+				return nil, errors.NewInternalError("failed to create inventory movement", err)
+			}
+			continue
+		}
+
+		// Process received items
+		if receivedQty > 0 {
+			// For items from exit bill, release reserved stock from company inventory
+			if item.ExpectedQuantity > 0 {
+				var companyInvDB inventory.Inventory
+				if err := tx.Where("product_variant_id = ? AND company_id = ?", item.ProductVariantID, exitBill.CompanyID).First(&companyInvDB).Error; err != nil {
+					// Inventory not found - skip (should not happen but handle gracefully)
+					continue
+				}
+
+				previousReservedStock := companyInvDB.ReservedStock
+				companyInvDB.ReleaseStock(item.ExpectedQuantity)
+				if err := tx.Save(&companyInvDB).Error; err != nil {
+					tx.Rollback()
+					return nil, errors.NewInternalError("failed to update company inventory", err)
+				}
+
+				// Create inventory movement for company
+				refType := "warehouse_bill"
+				refID := fmt.Sprintf("%d", bill.ID)
+				notes := fmt.Sprintf("Entry bill created - released reserved stock")
+				movement := &inventory.InventoryMovement{
+					InventoryID:   companyInvDB.ID,
+					MovementType:  inventory.MovementTypeRelease,
+					Quantity:      item.ExpectedQuantity,
+					PreviousStock: previousReservedStock,
+					NewStock:      companyInvDB.ReservedStock,
+					ReferenceType: &refType,
+					ReferenceID:   &refID,
+					Notes:         &notes,
+					CreatedByID:   userID,
+				}
+				if err := tx.Create(movement).Error; err != nil {
+					tx.Rollback()
+					return nil, errors.NewInternalError("failed to create inventory movement", err)
+				}
+			}
+
+			// Add to franchise inventory
+			var franchiseInvDB inventory.Inventory
+			if err := tx.Where("product_variant_id = ? AND franchise_id = ?", item.ProductVariantID, franchiseID).First(&franchiseInvDB).Error; err != nil {
+				// Create new inventory if it doesn't exist
+				franchiseInvDB = inventory.Inventory{
+					ProductVariantID: item.ProductVariantID,
+					FranchiseID:      &franchiseID,
+					Stock:            receivedQty,
+					ReservedStock:    0,
+					IsActive:         true,
+				}
+				if err := tx.Create(&franchiseInvDB).Error; err != nil {
+					tx.Rollback()
+					return nil, errors.NewInternalError("failed to create franchise inventory", err)
+				}
+
+				// Create inventory movement
+				refType := "warehouse_bill"
+				refID := fmt.Sprintf("%d", bill.ID)
+				notes := fmt.Sprintf("Entry bill created - stock received")
+				movement := &inventory.InventoryMovement{
+					InventoryID:   franchiseInvDB.ID,
+					MovementType:  inventory.MovementTypeTransfer,
+					Quantity:      receivedQty,
+					PreviousStock: 0,
+					NewStock:      receivedQty,
+					ReferenceType: &refType,
+					ReferenceID:   &refID,
+					Notes:         &notes,
+					CreatedByID:   userID,
+				}
+				if err := tx.Create(movement).Error; err != nil {
+					tx.Rollback()
+					return nil, errors.NewInternalError("failed to create inventory movement", err)
+				}
+			} else {
+				previousStock := franchiseInvDB.Stock
+				franchiseInvDB.AddStock(receivedQty)
+				if err := tx.Save(&franchiseInvDB).Error; err != nil {
+					tx.Rollback()
+					return nil, errors.NewInternalError("failed to update franchise inventory", err)
+				}
+
+				// Create inventory movement
+				refType := "warehouse_bill"
+				refID := fmt.Sprintf("%d", bill.ID)
+				notes := fmt.Sprintf("Entry bill created - stock received")
+				movement := &inventory.InventoryMovement{
+					InventoryID:   franchiseInvDB.ID,
+					MovementType:  inventory.MovementTypeTransfer,
+					Quantity:      receivedQty,
+					PreviousStock: previousStock,
+					NewStock:      franchiseInvDB.Stock,
+					ReferenceType: &refType,
+					ReferenceID:   &refID,
+					Notes:         &notes,
+					CreatedByID:   userID,
+				}
+				if err := tx.Create(movement).Error; err != nil {
+					tx.Rollback()
+					return nil, errors.NewInternalError("failed to create inventory movement", err)
+				}
+			}
+		}
+	}
+
 	tx.Commit()
-	
+
 	// Enrich response with product/variant details
 	response := ToWarehouseBillResponse(bill)
 	if err := s.enrichWarehouseBillResponse(response); err != nil {
 		// Log error but don't fail the request
 		fmt.Printf("Warning: failed to enrich bill response: %v\n", err)
 	}
-	
-	// Send email notification when bill is verified
+
+	// Send email notification
 	s.sendWarehouseBillEmail(bill, "entry")
-	
+
 	return response, nil
 }
 

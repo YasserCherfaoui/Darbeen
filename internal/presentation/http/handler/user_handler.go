@@ -92,3 +92,41 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, result)
 }
+
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	var req userApp.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.userService.ChangePassword(userID, &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, result.Message, result)
+}
+
+func (h *UserHandler) GetUserPortals(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	result, err := h.userService.GetUserPortals(userID)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}

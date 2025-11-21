@@ -690,6 +690,36 @@ func (h *POSHandler) GetFranchiseSalesReport(c *gin.Context) {
 	response.Success(c, http.StatusOK, result)
 }
 
+// Product Search endpoints
+
+func (h *POSHandler) SearchProducts(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	var req posApp.SearchProductsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.posService.SearchProductsForSale(userID, uint(companyID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}
+
 // Receipt endpoints
 
 func (h *POSHandler) GenerateReceipt(c *gin.Context) {

@@ -27,6 +27,7 @@ type Service struct {
 	inventoryRepo             inventory.Repository
 	inventoryMovementRepo     inventory.Repository
 	productVariantRepo        product.Repository
+	franchiseRepo             franchise.Repository
 	db                        *gorm.DB
 }
 
@@ -42,6 +43,7 @@ func NewService(
 	inventoryRepo inventory.Repository,
 	inventoryMovementRepo inventory.Repository,
 	productVariantRepo product.Repository,
+	franchiseRepo franchise.Repository,
 	db *gorm.DB,
 ) *Service {
 	return &Service{
@@ -56,6 +58,7 @@ func NewService(
 		inventoryRepo:             inventoryRepo,
 		inventoryMovementRepo:     inventoryMovementRepo,
 		productVariantRepo:        productVariantRepo,
+		franchiseRepo:             franchiseRepo,
 		db:                        db,
 	}
 }
@@ -1016,6 +1019,108 @@ func (s *Service) checkUserFranchiseAccess(userID, franchiseID uint, minimumRole
 	}
 
 	return nil
+}
+
+// SearchProductsForSale searches for products/variants with retail pricing for POS sales
+func (s *Service) SearchProductsForSale(userID, companyID uint, req *SearchProductsRequest) ([]*ProductVariantSearchResponse, error) {
+	// Check user authorization
+	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
+		return nil, err
+	}
+
+	// If franchise is specified, validate it belongs to company
+	if req.FranchiseID != nil {
+		franchise, err := s.franchiseRepo.FindByID(*req.FranchiseID)
+		if err != nil {
+			return nil, errors.NewNotFoundError("franchise not found")
+		}
+		if franchise.ParentCompanyID != companyID {
+			return nil, errors.NewForbiddenError("franchise does not belong to this company")
+		}
+	}
+
+	// Set default limit
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	// Search variants
+	variants, err := s.productVariantRepo.SearchVariantsByCompany(companyID, req.Query, limit)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to search products", err)
+	}
+
+	// Build response with retail pricing information
+	results := make([]*ProductVariantSearchResponse, 0, len(variants))
+	for _, variant := range variants {
+		// Get product (should be preloaded)
+		var product *product.Product
+		if variant.Product != nil {
+			product = variant.Product
+		} else {
+			// Fetch product if not preloaded
+			product, err = s.productVariantRepo.FindProductByID(variant.ProductID)
+			if err != nil {
+				continue // Skip if product not found
+			}
+		}
+
+		// Get base pricing
+		baseRetailPrice := product.BaseRetailPrice
+		baseWholesalePrice := product.BaseWholesalePrice
+
+		// Get variant-specific pricing
+		var variantRetailPrice, variantWholesalePrice *float64
+		if !variant.UseParentPricing {
+			if variant.RetailPrice != nil && *variant.RetailPrice > 0 {
+				variantRetailPrice = variant.RetailPrice
+			}
+			if variant.WholesalePrice != nil && *variant.WholesalePrice > 0 {
+				variantWholesalePrice = variant.WholesalePrice
+			}
+		}
+
+		// Calculate effective pricing (variant or base)
+		effectiveRetailPrice := variant.GetEffectiveRetailPrice(baseRetailPrice)
+		effectiveWholesalePrice := variant.GetEffectiveWholesalePrice(baseWholesalePrice)
+
+		// Get franchise pricing if available
+		var franchiseRetailPrice, franchiseWholesalePrice *float64
+		if req.FranchiseID != nil {
+			franchisePricing, err := s.franchiseRepo.FindPricing(*req.FranchiseID, variant.ID)
+			if err == nil && franchisePricing != nil {
+				if franchisePricing.RetailPrice != nil && *franchisePricing.RetailPrice > 0 {
+					franchiseRetailPrice = franchisePricing.RetailPrice
+					effectiveRetailPrice = *franchisePricing.RetailPrice
+				}
+				if franchisePricing.WholesalePrice != nil && *franchisePricing.WholesalePrice > 0 {
+					franchiseWholesalePrice = franchisePricing.WholesalePrice
+					effectiveWholesalePrice = *franchisePricing.WholesalePrice
+				}
+			}
+		}
+
+		results = append(results, &ProductVariantSearchResponse{
+			VariantID:                variant.ID,
+			VariantName:              variant.Name,
+			VariantSKU:               variant.SKU,
+			ProductID:                product.ID,
+			ProductName:              product.Name,
+			ProductSKU:               product.SKU,
+			BaseRetailPrice:          baseRetailPrice,
+			BaseWholesalePrice:       baseWholesalePrice,
+			VariantRetailPrice:       variantRetailPrice,
+			VariantWholesalePrice:    variantWholesalePrice,
+			FranchiseRetailPrice:     franchiseRetailPrice,
+			FranchiseWholesalePrice:  franchiseWholesalePrice,
+			EffectiveRetailPrice:     effectiveRetailPrice,
+			EffectiveWholesalePrice:   effectiveWholesalePrice,
+			UseParentPricing:         variant.UseParentPricing,
+		})
+	}
+
+	return results, nil
 }
 
 func stringPtr(s string) *string {
