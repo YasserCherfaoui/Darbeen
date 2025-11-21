@@ -1,11 +1,15 @@
 package company
 
 import (
+	"fmt"
+	"os"
 	"time"
 
+	emailApp "github.com/YasserCherfaoui/darween/internal/application/email"
 	"github.com/YasserCherfaoui/darween/internal/domain/company"
 	"github.com/YasserCherfaoui/darween/internal/domain/subscription"
 	"github.com/YasserCherfaoui/darween/internal/domain/user"
+	"github.com/YasserCherfaoui/darween/internal/infrastructure/security"
 	"github.com/YasserCherfaoui/darween/pkg/errors"
 )
 
@@ -13,13 +17,17 @@ type Service struct {
 	companyRepo      company.Repository
 	userRepo         user.Repository
 	subscriptionRepo subscription.Repository
+	emailService     *emailApp.Service
+	jwtManager       *security.JWTManager
 }
 
-func NewService(companyRepo company.Repository, userRepo user.Repository, subscriptionRepo subscription.Repository) *Service {
+func NewService(companyRepo company.Repository, userRepo user.Repository, subscriptionRepo subscription.Repository, emailService *emailApp.Service, jwtManager *security.JWTManager) *Service {
 	return &Service{
 		companyRepo:      companyRepo,
 		userRepo:         userRepo,
 		subscriptionRepo: subscriptionRepo,
+		emailService:     emailService,
+		jwtManager:       jwtManager,
 	}
 }
 
@@ -191,6 +199,47 @@ func (s *Service) AddUserToCompany(requestUserID, companyID uint, req *AddUserTo
 
 	if err := s.userRepo.CreateUserCompanyRole(ucr); err != nil {
 		return errors.NewInternalError("failed to add user to company", err)
+	}
+
+	// Send invitation email
+	company, err := s.companyRepo.FindByID(companyID)
+	if err == nil {
+		// Get inviter name
+		inviter, _ := s.userRepo.FindByID(requestUserID)
+		inviterName := "A team member"
+		if inviter != nil {
+			if inviter.FirstName != "" {
+				inviterName = fmt.Sprintf("%s %s", inviter.FirstName, inviter.LastName)
+			} else {
+				inviterName = inviter.Email
+			}
+		}
+
+		// Generate invitation token
+		invitationToken, err := s.jwtManager.GenerateInvitationToken(targetUser.Email, companyID)
+		if err == nil {
+			// Build invitation URL
+			invitationURL := os.Getenv("FRONTEND_URL")
+			if invitationURL == "" {
+				invitationURL = "http://localhost:3000"
+			}
+			invitationURL = fmt.Sprintf("%s/accept-invitation?token=%s", invitationURL, invitationToken)
+
+			// Send invitation email
+			emailReq := &emailApp.SendInvitationEmailRequest{
+				CompanyID:       companyID,
+				UserEmail:       targetUser.Email,
+				InviterName:     inviterName,
+				InvitationToken: invitationToken,
+				InvitationURL:   invitationURL,
+				CompanyName:     company.Name,
+			}
+
+			// Don't fail if email sending fails
+			if err := s.emailService.SendInvitationEmail(emailReq); err != nil {
+				fmt.Printf("Failed to send invitation email: %v\n", err)
+			}
+		}
 	}
 
 	return nil

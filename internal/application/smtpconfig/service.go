@@ -61,18 +61,25 @@ func (s *Service) CreateSMTPConfig(userID, companyID uint, req *CreateSMTPConfig
 		isActive = *req.IsActive
 	}
 
+	// Set default SkipTLSVerify if not provided
+	skipTLSVerify := false
+	if req.SkipTLSVerify != nil {
+		skipTLSVerify = *req.SkipTLSVerify
+	}
+
 	// Create SMTP config
 	newConfig := &smtpconfig.SMTPConfig{
-		CompanyID: companyID,
-		Host:      req.Host,
-		User:      req.User,
-		Password:  encryptedPassword,
-		Port:      req.Port,
-		FromName:  req.FromName,
-		Security:  securityType,
-		RateLimit: rateLimit,
-		IsActive:  isActive,
-		IsDefault: false,
+		CompanyID:     companyID,
+		Host:          req.Host,
+		User:          req.User,
+		Password:      encryptedPassword,
+		Port:          req.Port,
+		FromName:      req.FromName,
+		Security:      securityType,
+		SkipTLSVerify: skipTLSVerify,
+		RateLimit:     rateLimit,
+		IsActive:      isActive,
+		IsDefault:     false,
 	}
 
 	if err := s.smtpRepo.Create(newConfig); err != nil {
@@ -183,6 +190,9 @@ func (s *Service) UpdateSMTPConfig(userID, companyID, configID uint, req *Update
 		}
 		config.RateLimit = *req.RateLimit
 	}
+	if req.SkipTLSVerify != nil {
+		config.SkipTLSVerify = *req.SkipTLSVerify
+	}
 	if req.IsActive != nil {
 		config.IsActive = *req.IsActive
 	}
@@ -250,10 +260,11 @@ func (s *Service) toResponse(config *smtpconfig.SMTPConfig) *SMTPConfigResponse 
 		User:      config.User,
 		Port:      config.Port,
 		FromName:  config.FromName,
-		Security:  config.Security.String(),
-		RateLimit: config.RateLimit,
-		IsActive:  config.IsActive,
-		IsDefault: config.IsDefault,
+		Security:      config.Security.String(),
+		SkipTLSVerify: config.SkipTLSVerify,
+		RateLimit:     config.RateLimit,
+		IsActive:      config.IsActive,
+		IsDefault:     config.IsDefault,
 		CreatedAt: config.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: config.UpdatedAt.Format(time.RFC3339),
 	}

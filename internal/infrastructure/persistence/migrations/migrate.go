@@ -23,7 +23,7 @@ func AutoMigrate(db *gorm.DB) error {
 
 	// AutoMigrate will create tables, missing columns, missing indexes, and foreign key constraints
 	// migrate only when gin_mode is release
-	if gin.Mode() != gin.ReleaseMode {
+	if gin.Mode() == gin.ReleaseMode {
 		log.Println("Running auto-migration in release mode")
 		err := db.AutoMigrate(
 			&user.User{},

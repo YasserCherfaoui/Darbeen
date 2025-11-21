@@ -53,20 +53,31 @@ func (w *EmailQueueWorker) run() {
 }
 
 func (w *EmailQueueWorker) processQueue() {
-	// In a production system, you'd want to:
-	// 1. Get all companies with pending emails
-	// 2. For each company, process emails using ProcessEmailsForCompany
-	// 3. Handle errors gracefully
-
-	// For now, this is a simplified version that processes emails
-	// The actual implementation would query for companies with pending emails
-	// and process them one by one
-	
 	log.Println("Processing email queue...")
-	// TODO: Implement full queue processing logic
-	// This would involve:
-	// - Querying for companies with pending emails
-	// - Calling ProcessEmailsForCompany for each company
-	// - Handling errors and retries
+
+	// Get all companies with pending emails
+	companyIDs, err := w.mailingService.emailQueueRepo.FindCompaniesWithPendingEmails()
+	if err != nil {
+		log.Printf("Failed to find companies with pending emails: %v", err)
+		return
+	}
+
+	if len(companyIDs) == 0 {
+		log.Println("No companies with pending emails")
+		return
+	}
+
+	log.Printf("Found %d companies with pending emails", len(companyIDs))
+
+	// Process emails for each company
+	for _, companyID := range companyIDs {
+		if err := w.mailingService.ProcessEmailsForCompany(companyID); err != nil {
+			log.Printf("Failed to process emails for company %d: %v", companyID, err)
+			// Continue processing other companies even if one fails
+			continue
+		}
+	}
+
+	log.Println("Email queue processing completed")
 }
 

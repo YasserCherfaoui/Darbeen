@@ -6,6 +6,7 @@ import (
 
 	"github.com/YasserCherfaoui/darween/internal/application/auth"
 	"github.com/YasserCherfaoui/darween/internal/application/company"
+	emailApp "github.com/YasserCherfaoui/darween/internal/application/email"
 	"github.com/YasserCherfaoui/darween/internal/application/franchise"
 	"github.com/YasserCherfaoui/darween/internal/application/inventory"
 	"github.com/YasserCherfaoui/darween/internal/application/pos"
@@ -70,19 +71,24 @@ func main() {
 	// Initialize JWT manager
 	jwtManager := security.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiration)
 
+	// Initialize mailing service
+	mailingService := mailing.NewMailingService(smtpConfigRepo, emailQueueRepo)
+	
+	// Initialize email service
+	emailService := emailApp.NewService(mailingService, companyRepo)
+	
 	// Initialize services
-	authService := auth.NewService(userRepo, jwtManager)
+	authService := auth.NewService(userRepo, jwtManager, emailService)
 	userService := user.NewService(userRepo)
-	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo)
+	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo, emailService, jwtManager)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
 	productService := product.NewService(productRepo, userRepo, supplierRepo)
 	supplierService := supplier.NewService(supplierRepo, userRepo, inventoryRepo, productRepo, db)
-	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo)
+	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, emailService)
 	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo)
 	posService := pos.NewService(customerRepo, saleRepo, saleItemRepo, paymentRepo, cashDrawerRepo, cashDrawerTransactionRepo, refundRepo, userRepo, inventoryRepo, inventoryRepo, productRepo, db)
-	warehouseBillService := warehousebillApp.NewService(warehouseBillRepo, inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, db)
+	warehouseBillService := warehousebillApp.NewService(warehouseBillRepo, inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, emailService, db)
 	smtpConfigService := smtpconfigApp.NewService(smtpConfigRepo, userRepo)
-	mailingService := mailing.NewMailingService(smtpConfigRepo, emailQueueRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -96,9 +102,10 @@ func main() {
 	posHandler := handler.NewPOSHandler(posService)
 	warehouseBillHandler := handler.NewWarehouseBillHandler(warehouseBillService)
 	smtpConfigHandler := handler.NewSMTPConfigHandler(smtpConfigService)
+	emailHandler := handler.NewEmailHandler(emailService)
 
 	// Initialize router
-	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, posHandler, warehouseBillHandler, smtpConfigHandler, jwtManager)
+	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, posHandler, warehouseBillHandler, smtpConfigHandler, emailHandler, jwtManager)
 
 	// Start email queue worker (processes emails in background)
 	emailWorker := mailing.NewEmailQueueWorker(mailingService, 30*time.Second)

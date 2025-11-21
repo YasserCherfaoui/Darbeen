@@ -15,19 +15,24 @@ import (
 )
 
 type MailingService struct {
-	smtpRepo      smtpconfig.Repository
+	smtpRepo       smtpconfig.Repository
 	emailQueueRepo emailqueue.Repository
 }
 
 func NewMailingService(smtpRepo smtpconfig.Repository, emailQueueRepo emailqueue.Repository) *MailingService {
 	return &MailingService{
-		smtpRepo:      smtpRepo,
+		smtpRepo:       smtpRepo,
 		emailQueueRepo: emailQueueRepo,
 	}
 }
 
 // QueueEmail adds an email to the queue for processing
 func (m *MailingService) QueueEmail(companyID uint, smtpConfigID *uint, to []string, subject, body string, isHTML bool, scheduledAt *time.Time) error {
+	return m.QueueEmailWithType(companyID, smtpConfigID, to, subject, body, isHTML, emailqueue.EmailTypeCustom, scheduledAt)
+}
+
+// QueueEmailWithType adds an email to the queue for processing with a specific email type
+func (m *MailingService) QueueEmailWithType(companyID uint, smtpConfigID *uint, to []string, subject, body string, isHTML bool, emailType emailqueue.EmailType, scheduledAt *time.Time) error {
 	// Convert to array to JSON string
 	toJSON, err := json.Marshal(to)
 	if err != nil {
@@ -37,6 +42,7 @@ func (m *MailingService) QueueEmail(companyID uint, smtpConfigID *uint, to []str
 	email := &emailqueue.EmailQueue{
 		CompanyID:    companyID,
 		SMTPConfigID: smtpConfigID,
+		EmailType:    emailType,
 		To:           string(toJSON),
 		Subject:      subject,
 		Body:         body,
@@ -260,19 +266,20 @@ func (m *MailingService) sendEmailDirectly(email *emailqueue.EmailQueue, config 
 
 	// Connect to SMTP server based on security type
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	hostname := config.Host // Use hostname without port for TLS verification
 
 	auth := smtp.PlainAuth("", config.User, password, config.Host)
 
 	switch config.Security {
 	case smtpconfig.SecuritySSL:
 		// SSL connection
-		return m.sendWithSSL(addr, auth, config.User, to, msg.Bytes())
+		return m.sendWithSSL(addr, hostname, config.SkipTLSVerify, auth, config.User, to, msg.Bytes())
 	case smtpconfig.SecurityTLS:
 		// TLS connection
-		return m.sendWithTLS(addr, auth, config.User, to, msg.Bytes())
+		return m.sendWithTLS(addr, hostname, config.SkipTLSVerify, auth, config.User, to, msg.Bytes())
 	case smtpconfig.SecuritySTARTTLS:
 		// STARTTLS
-		return m.sendWithSTARTTLS(addr, auth, config.User, to, msg.Bytes())
+		return m.sendWithSTARTTLS(addr, hostname, config.SkipTLSVerify, auth, config.User, to, msg.Bytes())
 	case smtpconfig.SecurityNone:
 		// No encryption
 		return smtp.SendMail(addr, auth, config.User, to, msg.Bytes())
@@ -281,11 +288,12 @@ func (m *MailingService) sendEmailDirectly(email *emailqueue.EmailQueue, config 
 	}
 }
 
-func (m *MailingService) sendWithSSL(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+func (m *MailingService) sendWithSSL(addr string, hostname string, skipVerify bool, auth smtp.Auth, from string, to []string, msg []byte) error {
 	// SSL requires TLS from the start
+	// Use hostname (without port) for ServerName to match certificate
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: false,
-		ServerName:         addr,
+		InsecureSkipVerify: skipVerify,
+		ServerName:         hostname,
 	}
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
@@ -294,7 +302,8 @@ func (m *MailingService) sendWithSSL(addr string, auth smtp.Auth, from string, t
 	}
 	defer conn.Close()
 
-	client, err := smtp.NewClient(conn, addr)
+	// When using an existing TLS connection, pass hostname (without port) to NewClient
+	client, err := smtp.NewClient(conn, hostname)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
@@ -330,11 +339,12 @@ func (m *MailingService) sendWithSSL(addr string, auth smtp.Auth, from string, t
 	return client.Quit()
 }
 
-func (m *MailingService) sendWithTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+func (m *MailingService) sendWithTLS(addr string, hostname string, skipVerify bool, auth smtp.Auth, from string, to []string, msg []byte) error {
 	// TLS connection
+	// Use hostname (without port) for ServerName to match certificate
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: false,
-		ServerName:         addr,
+		InsecureSkipVerify: skipVerify,
+		ServerName:         hostname,
 	}
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
@@ -343,7 +353,8 @@ func (m *MailingService) sendWithTLS(addr string, auth smtp.Auth, from string, t
 	}
 	defer conn.Close()
 
-	client, err := smtp.NewClient(conn, addr)
+	// When using an existing TLS connection, pass hostname (without port) to NewClient
+	client, err := smtp.NewClient(conn, hostname)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
@@ -379,7 +390,7 @@ func (m *MailingService) sendWithTLS(addr string, auth smtp.Auth, from string, t
 	return client.Quit()
 }
 
-func (m *MailingService) sendWithSTARTTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+func (m *MailingService) sendWithSTARTTLS(addr string, hostname string, skipVerify bool, auth smtp.Auth, from string, to []string, msg []byte) error {
 	// STARTTLS - connect first, then upgrade
 	client, err := smtp.Dial(addr)
 	if err != nil {
@@ -387,9 +398,10 @@ func (m *MailingService) sendWithSTARTTLS(addr string, auth smtp.Auth, from stri
 	}
 	defer client.Close()
 
+	// Use hostname (without port) for ServerName to match certificate
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: false,
-		ServerName:         addr,
+		InsecureSkipVerify: skipVerify,
+		ServerName:         hostname,
 	}
 
 	if err = client.StartTLS(tlsConfig); err != nil {

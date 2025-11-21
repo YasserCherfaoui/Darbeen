@@ -72,3 +72,14 @@ func (r *emailQueueRepository) GetEmailCountInWindow(smtpConfigID uint, windowSt
 	return int(count), err
 }
 
+func (r *emailQueueRepository) FindCompaniesWithPendingEmails() ([]uint, error) {
+	var companyIDs []uint
+	now := time.Now()
+	err := r.db.Model(&emailqueue.EmailQueue{}).
+		Distinct("company_id").
+		Where("status = ?", emailqueue.EmailStatusPending).
+		Where("(scheduled_at IS NULL OR scheduled_at <= ?)", now).
+		Pluck("company_id", &companyIDs).Error
+	return companyIDs, err
+}
+

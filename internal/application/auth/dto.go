@@ -24,4 +24,16 @@ type UserInfo struct {
 	LastName  string `json:"last_name"`
 }
 
+type PasswordResetRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type PasswordResetConfirmRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
+}
+
+type PasswordResetResponse struct {
+	Message string `json:"message"`
+}
 

@@ -19,6 +19,7 @@ type Router struct {
 	posHandler           *handler.POSHandler
 	warehouseBillHandler *handler.WarehouseBillHandler
 	smtpConfigHandler    *handler.SMTPConfigHandler
+	emailHandler         *handler.EmailHandler
 	jwtManager           *security.JWTManager
 }
 
@@ -34,6 +35,7 @@ func NewRouter(
 	posHandler *handler.POSHandler,
 	warehouseBillHandler *handler.WarehouseBillHandler,
 	smtpConfigHandler *handler.SMTPConfigHandler,
+	emailHandler *handler.EmailHandler,
 	jwtManager *security.JWTManager,
 ) *Router {
 	return &Router{
@@ -48,6 +50,7 @@ func NewRouter(
 		posHandler:           posHandler,
 		warehouseBillHandler: warehouseBillHandler,
 		smtpConfigHandler:    smtpConfigHandler,
+		emailHandler:         emailHandler,
 		jwtManager:           jwtManager,
 	}
 }
@@ -64,6 +67,8 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 	{
 		auth.POST("/register", r.authHandler.Register)
 		auth.POST("/login", r.authHandler.Login)
+		auth.POST("/password-reset/request", r.authHandler.RequestPasswordReset)
+		auth.POST("/password-reset/confirm", r.authHandler.ConfirmPasswordReset)
 	}
 
 	// Protected routes
@@ -101,6 +106,9 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.PUT("/:companyId/smtp-configs/:configId", r.smtpConfigHandler.UpdateSMTPConfig)
 		companies.DELETE("/:companyId/smtp-configs/:configId", r.smtpConfigHandler.DeleteSMTPConfig)
 		companies.PUT("/:companyId/smtp-configs/:configId/default", r.smtpConfigHandler.SetDefaultSMTPConfig)
+
+		// Email routes nested under company
+		companies.POST("/:companyId/emails/send", r.emailHandler.SendEmail)
 
 		// Product routes nested under company
 		companies.POST("/:companyId/products", r.productHandler.CreateProduct)

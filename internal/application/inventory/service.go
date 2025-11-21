@@ -3,6 +3,7 @@ package inventory
 import (
 	"fmt"
 
+	emailApp "github.com/YasserCherfaoui/darween/internal/application/email"
 	companyDomain "github.com/YasserCherfaoui/darween/internal/domain/company"
 	franchiseDomain "github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	"github.com/YasserCherfaoui/darween/internal/domain/inventory"
@@ -17,6 +18,7 @@ type Service struct {
 	franchiseRepo franchiseDomain.Repository
 	userRepo      userDomain.Repository
 	productRepo   productDomain.Repository
+	emailService  *emailApp.Service
 }
 
 func NewService(
@@ -25,6 +27,7 @@ func NewService(
 	franchiseRepo franchiseDomain.Repository,
 	userRepo userDomain.Repository,
 	productRepo productDomain.Repository,
+	emailService *emailApp.Service,
 ) *Service {
 	return &Service{
 		inventoryRepo: inventoryRepo,
@@ -32,6 +35,7 @@ func NewService(
 		franchiseRepo: franchiseRepo,
 		userRepo:      userRepo,
 		productRepo:   productRepo,
+		emailService:  emailService,
 	}
 }
 
@@ -188,6 +192,9 @@ func (s *Service) UpdateInventoryStock(userID, inventoryID uint, req *UpdateInve
 		fmt.Printf("Failed to log inventory movement: %v\n", err)
 	}
 
+	// Check for stock alerts
+	s.checkAndSendStockAlert(inv)
+
 	return s.buildInventoryResponse(inv)
 }
 
@@ -231,6 +238,9 @@ func (s *Service) AdjustInventoryStock(userID, inventoryID uint, req *AdjustInve
 	if err := s.inventoryRepo.CreateMovement(movement); err != nil {
 		fmt.Printf("Failed to log inventory movement: %v\n", err)
 	}
+
+	// Check for stock alerts
+	s.checkAndSendStockAlert(inv)
 
 	return s.buildInventoryResponse(inv)
 }
@@ -456,6 +466,93 @@ func (s *Service) buildInventoryResponse(inv *inventory.Inventory) (*InventoryRe
 	}
 
 	return response, nil
+}
+
+// checkAndSendStockAlert checks if stock is below threshold and sends alert email
+func (s *Service) checkAndSendStockAlert(inv *inventory.Inventory) {
+	if s.emailService == nil {
+		return
+	}
+
+	// Default threshold: 10 units (can be made configurable per product/variant later)
+	threshold := 10
+
+	// Only send alert if stock falls below threshold
+	if inv.Stock >= threshold {
+		return
+	}
+
+	// Get company ID
+	companyID := inv.CompanyID
+	if companyID == nil && inv.FranchiseID != nil {
+		// Get franchise to get company ID
+		franchise, err := s.franchiseRepo.FindByID(*inv.FranchiseID)
+		if err != nil {
+			return
+		}
+		companyID = &franchise.ParentCompanyID
+	}
+
+	if companyID == nil {
+		return
+	}
+
+	// Get company
+	company, err := s.companyRepo.FindByID(*companyID)
+	if err != nil {
+		return
+	}
+
+	// Get company users (managers and admins) to send emails to
+	companyUsers, err := s.userRepo.FindByCompanyID(*companyID)
+	if err != nil {
+		return
+	}
+
+	// Filter to managers and admins
+	var recipients []string
+	for _, user := range companyUsers {
+		role, err := s.userRepo.FindUserRoleInCompany(user.ID, *companyID)
+		if err == nil && (role.Role == userDomain.RoleOwner || role.Role == userDomain.RoleAdmin || role.Role == userDomain.RoleManager) {
+			recipients = append(recipients, user.Email)
+		}
+	}
+
+	if len(recipients) == 0 {
+		return
+	}
+
+	// Get product and variant details
+	variant, err := s.productRepo.FindProductVariantByID(inv.ProductVariantID)
+	if err != nil {
+		return
+	}
+
+	product, err := s.productRepo.FindProductByID(variant.ProductID)
+	if err != nil {
+		return
+	}
+
+	// Send stock alert email
+	emailReq := &emailApp.SendStockAlertEmailRequest{
+		CompanyID:     *companyID,
+		To:            recipients,
+		ProductName:   product.Name,
+		VariantName:   variant.Name,
+		CurrentStock:  inv.Stock,
+		Threshold:     threshold,
+		ProductDetails: map[string]interface{}{
+			"product_id":   product.ID,
+			"variant_id":   variant.ID,
+			"product_sku":  product.SKU,
+			"variant_sku":  variant.SKU,
+		},
+		CompanyName: company.Name,
+	}
+
+	if err := s.emailService.SendStockAlertEmail(emailReq); err != nil {
+		fmt.Printf("Failed to send stock alert email: %v\n", err)
+	}
 }
 
 // Helper functions

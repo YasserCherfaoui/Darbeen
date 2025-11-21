@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	emailApp "github.com/YasserCherfaoui/darween/internal/application/email"
 	companyDomain "github.com/YasserCherfaoui/darween/internal/domain/company"
 	franchiseDomain "github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	"github.com/YasserCherfaoui/darween/internal/domain/inventory"
@@ -22,6 +23,7 @@ type Service struct {
 	franchiseRepo     franchiseDomain.Repository
 	userRepo          userDomain.Repository
 	productRepo       productDomain.Repository
+	emailService      *emailApp.Service
 	db                *gorm.DB
 }
 
@@ -32,6 +34,7 @@ func NewService(
 	franchiseRepo franchiseDomain.Repository,
 	userRepo userDomain.Repository,
 	productRepo productDomain.Repository,
+	emailService *emailApp.Service,
 	db *gorm.DB,
 ) *Service {
 	return &Service{
@@ -41,6 +44,7 @@ func NewService(
 		franchiseRepo:     franchiseRepo,
 		userRepo:          userRepo,
 		productRepo:       productRepo,
+		emailService:      emailService,
 		db:                db,
 	}
 }
@@ -326,6 +330,9 @@ func (s *Service) CreateEntryBill(userID, franchiseID uint, req *CreateEntryBill
 		// Log error but don't fail the request
 		fmt.Printf("Warning: failed to enrich bill response: %v\n", err)
 	}
+	
+	// Send email notification when bill is verified
+	s.sendWarehouseBillEmail(bill, "entry")
 	
 	return response, nil
 }
@@ -645,6 +652,9 @@ func (s *Service) CompleteExitBill(userID, companyID, billID uint) (*WarehouseBi
 		fmt.Printf("Warning: failed to enrich bill response: %v\n", err)
 	}
 	
+	// Send email notification
+	s.sendWarehouseBillEmail(bill, "exit")
+	
 	return response, nil
 }
 
@@ -808,7 +818,79 @@ func (s *Service) CompleteEntryBill(userID, franchiseID, billID uint) (*Warehous
 		fmt.Printf("Warning: failed to enrich bill response: %v\n", err)
 	}
 	
+	// Send email notification
+	s.sendWarehouseBillEmail(bill, "entry")
+	
 	return response, nil
+}
+
+// sendWarehouseBillEmail sends an email notification for warehouse bill completion
+func (s *Service) sendWarehouseBillEmail(bill *warehousebill.WarehouseBill, billType string) {
+	if s.emailService == nil {
+		return
+	}
+
+	// Get company
+	company, err := s.companyRepo.FindByID(bill.CompanyID)
+	if err != nil {
+		fmt.Printf("Failed to get company for email: %v\n", err)
+		return
+	}
+
+	// Get company users (managers and admins) to send emails to
+	companyUsers, err := s.userRepo.FindByCompanyID(bill.CompanyID)
+	if err != nil {
+		fmt.Printf("Failed to get company users for email: %v\n", err)
+		return
+	}
+
+	// Filter to managers and admins
+	var recipients []string
+	for _, user := range companyUsers {
+		role, err := s.userRepo.FindUserRoleInCompany(user.ID, bill.CompanyID)
+		if err == nil && (role.Role == userDomain.RoleOwner || role.Role == userDomain.RoleAdmin || role.Role == userDomain.RoleManager) {
+			recipients = append(recipients, user.Email)
+		}
+	}
+
+	if len(recipients) == 0 {
+		return // No recipients
+	}
+
+	// Prepare bill items for email
+	billItems := make([]map[string]interface{}, 0, len(bill.Items))
+	for _, item := range bill.Items {
+		variant, _ := s.productRepo.FindProductVariantByID(item.ProductVariantID)
+		product, _ := s.productRepo.FindProductByID(variant.ProductID)
+		
+		productName := ""
+		if product != nil {
+			productName = product.Name
+		} else if variant != nil {
+			productName = variant.Name
+		}
+		
+		billItems = append(billItems, map[string]interface{}{
+			"product_name": productName,
+			"quantity":     item.Quantity,
+		})
+	}
+
+	// Send email
+	emailReq := &emailApp.SendWarehouseBillEmailRequest{
+		CompanyID:   bill.CompanyID,
+		To:          recipients,
+		BillNumber:  bill.BillNumber,
+		BillType:    billType,
+		BillDate:    bill.CreatedAt.Format("2006-01-02 15:04:05"),
+		BillItems:   billItems,
+		TotalAmount: 0, // Can be calculated if needed
+		CompanyName: company.Name,
+	}
+
+	if err := s.emailService.SendWarehouseBillEmail(emailReq); err != nil {
+		fmt.Printf("Failed to send warehouse bill email: %v\n", err)
+	}
 }
 
 // enrichWarehouseBillResponse enriches bill response with product/variant details

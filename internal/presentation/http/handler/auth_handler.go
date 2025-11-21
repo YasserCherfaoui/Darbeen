@@ -50,3 +50,35 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, result)
 }
+
+func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
+	var req auth.PasswordResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.RequestPasswordReset(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, result.Message, result)
+}
+
+func (h *AuthHandler) ConfirmPasswordReset(c *gin.Context) {
+	var req auth.PasswordResetConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	result, err := h.authService.ConfirmPasswordReset(&req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, result.Message, result)
+}
