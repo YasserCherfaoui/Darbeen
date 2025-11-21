@@ -90,6 +90,10 @@ func (r *userRepository) FindCompanyUsersByCompanyID(companyID uint) ([]*user.Us
 	return roles, err
 }
 
+func (r *userRepository) UpdateUserCompanyRole(ucr *user.UserCompanyRole) error {
+	return r.db.Save(ucr).Error
+}
+
 // User-Franchise-Role operations
 
 func (r *userRepository) CreateUserFranchiseRole(ufr *user.UserFranchiseRole) error {
@@ -124,4 +128,8 @@ func (r *userRepository) FindFranchiseUsersByFranchiseID(franchiseID uint) ([]*u
 	var roles []*user.UserFranchiseRole
 	err := r.db.Where("franchise_id = ? AND is_active = ?", franchiseID, true).Find(&roles).Error
 	return roles, err
+}
+
+func (r *userRepository) UpdateUserFranchiseRole(ufr *user.UserFranchiseRole) error {
+	return r.db.Save(ufr).Error
 }

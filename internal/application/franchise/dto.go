@@ -46,6 +46,23 @@ type AddUserToFranchiseRequest struct {
 	Role  string `json:"role" binding:"required"`
 }
 
+type UpdateUserRoleRequest struct {
+	Role string `json:"role" binding:"required"`
+}
+
+type UserWithRoleResponse struct {
+	ID        uint   `json:"id"`
+	Email     string `json:"email"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Role      string `json:"role"`
+	IsActive  bool   `json:"is_active"`
+}
+
+type ListFranchiseUsersResponse struct {
+	Users []*UserWithRoleResponse `json:"users"`
+}
+
 // Response DTOs
 
 type FranchiseResponse struct {

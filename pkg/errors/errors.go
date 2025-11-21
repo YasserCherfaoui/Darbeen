@@ -80,3 +80,12 @@ func NewBadRequestError(message string) *AppError {
 	}
 }
 
+// NewValidationErrorsError creates a validation error with multiple issues
+// The message should be a JSON string containing the validation issues
+func NewValidationErrorsError(message string) *AppError {
+	return &AppError{
+		Code:    CodeValidation,
+		Message: message,
+	}
+}
+

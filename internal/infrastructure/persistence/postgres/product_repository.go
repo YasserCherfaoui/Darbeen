@@ -143,6 +143,34 @@ func (r *productRepository) SoftDeleteProductVariant(id uint) error {
 	return r.db.Model(&product.ProductVariant{}).Where("id = ?", id).Update("is_active", false).Error
 }
 
+func (r *productRepository) SearchVariantsByCompany(companyID uint, query string, limit int) ([]*product.ProductVariant, error) {
+	var variants []*product.ProductVariant
+	
+	// Set default limit if not provided
+	if limit <= 0 {
+		limit = 50
+	}
+	
+	// Build search pattern for ILIKE (case-insensitive partial match)
+	searchPattern := "%" + query + "%"
+	
+	// Search across product names, product SKUs, variant names, and variant SKUs
+	err := r.db.
+		Joins("JOIN products ON products.id = product_variants.product_id").
+		Where("products.company_id = ?", companyID).
+		Where("products.is_active = ? AND product_variants.is_active = ?", true, true).
+		Where(
+			"products.name ILIKE ? OR products.sku ILIKE ? OR product_variants.name ILIKE ? OR product_variants.sku ILIKE ?",
+			searchPattern, searchPattern, searchPattern, searchPattern,
+		).
+		Preload("Product").
+		Limit(limit).
+		Order("product_variants.created_at DESC").
+		Find(&variants).Error
+	
+	return variants, err
+}
+
 // Stock operations
 func (r *productRepository) UpdateVariantStock(variantID uint, newStock int) error {
 	return r.db.Model(&product.ProductVariant{}).Where("id = ?", variantID).Update("stock", newStock).Error

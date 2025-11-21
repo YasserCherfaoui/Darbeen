@@ -8,16 +8,18 @@ import (
 )
 
 type Router struct {
-	authHandler         *handler.AuthHandler
-	userHandler         *handler.UserHandler
-	companyHandler      *handler.CompanyHandler
-	subscriptionHandler *handler.SubscriptionHandler
-	productHandler      *handler.ProductHandler
-	supplierHandler     *handler.SupplierHandler
-	inventoryHandler    *handler.InventoryHandler
-	franchiseHandler    *handler.FranchiseHandler
-	posHandler          *handler.POSHandler
-	jwtManager          *security.JWTManager
+	authHandler          *handler.AuthHandler
+	userHandler          *handler.UserHandler
+	companyHandler       *handler.CompanyHandler
+	subscriptionHandler  *handler.SubscriptionHandler
+	productHandler       *handler.ProductHandler
+	supplierHandler      *handler.SupplierHandler
+	inventoryHandler     *handler.InventoryHandler
+	franchiseHandler     *handler.FranchiseHandler
+	posHandler           *handler.POSHandler
+	warehouseBillHandler *handler.WarehouseBillHandler
+	smtpConfigHandler    *handler.SMTPConfigHandler
+	jwtManager           *security.JWTManager
 }
 
 func NewRouter(
@@ -30,19 +32,23 @@ func NewRouter(
 	inventoryHandler *handler.InventoryHandler,
 	franchiseHandler *handler.FranchiseHandler,
 	posHandler *handler.POSHandler,
+	warehouseBillHandler *handler.WarehouseBillHandler,
+	smtpConfigHandler *handler.SMTPConfigHandler,
 	jwtManager *security.JWTManager,
 ) *Router {
 	return &Router{
-		authHandler:         authHandler,
-		userHandler:         userHandler,
-		companyHandler:      companyHandler,
-		subscriptionHandler: subscriptionHandler,
-		productHandler:      productHandler,
-		supplierHandler:     supplierHandler,
-		inventoryHandler:    inventoryHandler,
-		franchiseHandler:    franchiseHandler,
-		posHandler:          posHandler,
-		jwtManager:          jwtManager,
+		authHandler:          authHandler,
+		userHandler:          userHandler,
+		companyHandler:       companyHandler,
+		subscriptionHandler:  subscriptionHandler,
+		productHandler:       productHandler,
+		supplierHandler:      supplierHandler,
+		inventoryHandler:     inventoryHandler,
+		franchiseHandler:     franchiseHandler,
+		posHandler:           posHandler,
+		warehouseBillHandler: warehouseBillHandler,
+		smtpConfigHandler:    smtpConfigHandler,
+		jwtManager:           jwtManager,
 	}
 }
 
@@ -80,11 +86,21 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.GET("/:companyId", r.companyHandler.GetCompany)
 		companies.PUT("/:companyId", r.companyHandler.UpdateCompany)
 		companies.POST("/:companyId/users", r.companyHandler.AddUserToCompany)
+		companies.GET("/:companyId/users", r.companyHandler.ListCompanyUsers)
+		companies.PUT("/:companyId/users/:userId/role", r.companyHandler.UpdateUserRole)
 		companies.DELETE("/:companyId/users/:userId", r.companyHandler.RemoveUserFromCompany)
 
 		// Subscription routes nested under company
 		companies.GET("/:companyId/subscription", r.subscriptionHandler.GetSubscription)
 		companies.PUT("/:companyId/subscription", r.subscriptionHandler.UpdateSubscription)
+
+		// SMTP config routes nested under company
+		companies.POST("/:companyId/smtp-configs", r.smtpConfigHandler.CreateSMTPConfig)
+		companies.GET("/:companyId/smtp-configs", r.smtpConfigHandler.ListSMTPConfigs)
+		companies.GET("/:companyId/smtp-configs/:configId", r.smtpConfigHandler.GetSMTPConfig)
+		companies.PUT("/:companyId/smtp-configs/:configId", r.smtpConfigHandler.UpdateSMTPConfig)
+		companies.DELETE("/:companyId/smtp-configs/:configId", r.smtpConfigHandler.DeleteSMTPConfig)
+		companies.PUT("/:companyId/smtp-configs/:configId/default", r.smtpConfigHandler.SetDefaultSMTPConfig)
 
 		// Product routes nested under company
 		companies.POST("/:companyId/products", r.productHandler.CreateProduct)
@@ -113,6 +129,23 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.PUT("/:companyId/suppliers/:supplierId", r.supplierHandler.UpdateSupplier)
 		companies.DELETE("/:companyId/suppliers/:supplierId", r.supplierHandler.DeleteSupplier)
 		companies.GET("/:companyId/suppliers/:supplierId/products", r.supplierHandler.GetSupplierProducts)
+		companies.GET("/:companyId/suppliers/:supplierId/outstanding", r.supplierHandler.GetSupplierOutstandingBalance)
+		companies.POST("/:companyId/suppliers/:supplierId/payments", r.supplierHandler.RecordSupplierPayment)
+
+		// Supplier bill routes nested under suppliers
+		companies.POST("/:companyId/suppliers/:supplierId/bills", r.supplierHandler.CreateSupplierBill)
+		companies.GET("/:companyId/suppliers/:supplierId/bills", r.supplierHandler.ListSupplierBills)
+		companies.GET("/:companyId/suppliers/:supplierId/bills/:billId", r.supplierHandler.GetSupplierBill)
+		companies.PUT("/:companyId/suppliers/:supplierId/bills/:billId", r.supplierHandler.UpdateSupplierBill)
+		companies.DELETE("/:companyId/suppliers/:supplierId/bills/:billId", r.supplierHandler.DeleteSupplierBill)
+
+		// Bill endpoint without supplier ID (for inventory movement references)
+		companies.GET("/:companyId/bills/:billId", r.supplierHandler.GetSupplierBillByID)
+
+		// Supplier bill item routes nested under bills
+		companies.POST("/:companyId/suppliers/:supplierId/bills/:billId/items", r.supplierHandler.AddBillItem)
+		companies.PUT("/:companyId/suppliers/:supplierId/bills/:billId/items/:itemId", r.supplierHandler.UpdateBillItem)
+		companies.DELETE("/:companyId/suppliers/:supplierId/bills/:billId/items/:itemId", r.supplierHandler.RemoveBillItem)
 
 		// Franchise routes
 		companies.POST("/:companyId/franchises", r.franchiseHandler.CreateFranchise)
@@ -132,6 +165,7 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.POST("/:companyId/pos/sales", r.posHandler.CreateSale)
 		companies.GET("/:companyId/pos/sales", r.posHandler.ListSales)
 		companies.GET("/:companyId/pos/sales/:saleId", r.posHandler.GetSale)
+		companies.GET("/:companyId/pos/sales/:saleId/receipt", r.posHandler.GenerateReceipt)
 		companies.POST("/:companyId/pos/sales/:saleId/payments", r.posHandler.AddPayment)
 		companies.POST("/:companyId/pos/sales/:saleId/refund", r.posHandler.ProcessRefund)
 
@@ -143,6 +177,15 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		companies.GET("/:companyId/pos/cash-drawer", r.posHandler.ListCashDrawers)
 
 		companies.POST("/:companyId/pos/reports/sales", r.posHandler.GetSalesReport)
+
+		// Warehouse bill routes (exit bills)
+		companies.POST("/:companyId/warehouse-bills/exit", r.warehouseBillHandler.CreateExitBill)
+		companies.GET("/:companyId/warehouse-bills/search", r.warehouseBillHandler.SearchProductsForExitBill)
+		companies.GET("/:companyId/warehouse-bills", r.warehouseBillHandler.ListWarehouseBills)
+		companies.GET("/:companyId/warehouse-bills/:billId", r.warehouseBillHandler.GetWarehouseBill)
+		companies.PUT("/:companyId/warehouse-bills/:billId/items", r.warehouseBillHandler.UpdateExitBillItems)
+		companies.PUT("/:companyId/warehouse-bills/:billId/complete", r.warehouseBillHandler.CompleteExitBill)
+		companies.DELETE("/:companyId/warehouse-bills/:billId", r.warehouseBillHandler.CancelWarehouseBill)
 	}
 
 	// Franchise-specific routes
@@ -157,6 +200,8 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		franchises.POST("/:franchiseId/pricing/bulk", r.franchiseHandler.BulkSetFranchisePricing)
 		franchises.DELETE("/:franchiseId/pricing/:variantId", r.franchiseHandler.DeleteFranchisePricing)
 		franchises.POST("/:franchiseId/users", r.franchiseHandler.AddUserToFranchise)
+		franchises.GET("/:franchiseId/users", r.franchiseHandler.ListFranchiseUsers)
+		franchises.PUT("/:franchiseId/users/:userId/role", r.franchiseHandler.UpdateUserRole)
 		franchises.DELETE("/:franchiseId/users/:userId", r.franchiseHandler.RemoveUserFromFranchise)
 
 		// Franchise POS routes
@@ -165,6 +210,13 @@ func (r *Router) SetupRoutes(engine *gin.Engine) {
 		franchises.GET("/:franchiseId/pos/cash-drawer/active", r.posHandler.GetActiveFranchiseCashDrawer)
 		franchises.GET("/:franchiseId/pos/cash-drawer", r.posHandler.ListFranchiseCashDrawers)
 		franchises.POST("/:franchiseId/pos/reports/sales", r.posHandler.GetFranchiseSalesReport)
+
+		// Warehouse bill routes (entry bills)
+		franchises.POST("/:franchiseId/warehouse-bills/entry", r.warehouseBillHandler.CreateEntryBill)
+		franchises.GET("/:franchiseId/warehouse-bills", r.warehouseBillHandler.ListFranchiseWarehouseBills)
+		franchises.GET("/:franchiseId/warehouse-bills/:billId", r.warehouseBillHandler.GetFranchiseWarehouseBill)
+		franchises.POST("/:franchiseId/warehouse-bills/:billId/verify", r.warehouseBillHandler.VerifyEntryBill)
+		franchises.PUT("/:franchiseId/warehouse-bills/:billId/complete", r.warehouseBillHandler.CompleteEntryBill)
 	}
 
 	// Inventory routes

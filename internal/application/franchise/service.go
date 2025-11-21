@@ -463,6 +463,107 @@ func (s *Service) RemoveUserFromFranchise(requestUserID, franchiseID, targetUser
 	return nil
 }
 
+func (s *Service) GetFranchiseUsers(requestUserID, franchiseID uint) (*ListFranchiseUsersResponse, error) {
+	franchise, err := s.franchiseRepo.FindByID(franchiseID)
+	if err != nil {
+		return nil, errors.NewNotFoundError("franchise not found")
+	}
+
+	// Check if requester has access (parent company or franchise role)
+	parentRole, _ := s.userRepo.FindUserRoleInCompany(requestUserID, franchise.ParentCompanyID)
+	franchiseRole, _ := s.userRepo.FindUserRoleInFranchise(requestUserID, franchiseID)
+
+	if parentRole == nil && franchiseRole == nil {
+		return nil, errors.NewForbiddenError("you don't have access to this franchise")
+	}
+
+	// Check if requester has at least manager role
+	hasManagerAccess := false
+	if parentRole != nil && parentRole.Role.HasPermission(userDomain.RoleManager) {
+		hasManagerAccess = true
+	}
+	if franchiseRole != nil && franchiseRole.Role.HasPermission(userDomain.RoleManager) {
+		hasManagerAccess = true
+	}
+
+	if !hasManagerAccess {
+		return nil, errors.NewForbiddenError("you need at least manager role to view franchise users")
+	}
+
+	// Get all users in the franchise
+	roles, err := s.userRepo.FindFranchiseUsersByFranchiseID(franchiseID)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to fetch franchise users", err)
+	}
+
+	var users []*UserWithRoleResponse
+	for _, role := range roles {
+		u, err := s.userRepo.FindByID(role.UserID)
+		if err != nil {
+			continue // Skip if user not found
+		}
+
+		users = append(users, &UserWithRoleResponse{
+			ID:        u.ID,
+			Email:     u.Email,
+			FirstName: u.FirstName,
+			LastName:  u.LastName,
+			Role:      role.Role.String(),
+			IsActive:  role.IsActive,
+		})
+	}
+
+	return &ListFranchiseUsersResponse{
+		Users: users,
+	}, nil
+}
+
+func (s *Service) UpdateUserRoleInFranchise(requestUserID, franchiseID, targetUserID uint, req *UpdateUserRoleRequest) error {
+	franchise, err := s.franchiseRepo.FindByID(franchiseID)
+	if err != nil {
+		return errors.NewNotFoundError("franchise not found")
+	}
+
+	// Check if requester has permission (parent company admin or franchise admin)
+	parentRole, _ := s.userRepo.FindUserRoleInCompany(requestUserID, franchise.ParentCompanyID)
+	franchiseRole, _ := s.userRepo.FindUserRoleInFranchise(requestUserID, franchiseID)
+
+	if (parentRole == nil || (parentRole.Role != userDomain.RoleOwner && parentRole.Role != userDomain.RoleAdmin)) &&
+		(franchiseRole == nil || (franchiseRole.Role != userDomain.RoleOwner && franchiseRole.Role != userDomain.RoleAdmin)) {
+		return errors.NewForbiddenError("only owners and admins can update user roles")
+	}
+
+	// Validate new role
+	newRole := userDomain.Role(req.Role)
+	if !newRole.IsValid() {
+		return errors.NewValidationError("invalid role")
+	}
+
+	// Check if target user exists in franchise
+	targetRole, err := s.userRepo.FindUserRoleInFranchise(targetUserID, franchiseID)
+	if err != nil {
+		return errors.NewNotFoundError("user not found in franchise")
+	}
+
+	// Cannot change owner role
+	if targetRole.Role == userDomain.RoleOwner {
+		return errors.NewForbiddenError("cannot change owner role")
+	}
+
+	// Cannot assign owner role (only through franchise creation)
+	if newRole == userDomain.RoleOwner {
+		return errors.NewForbiddenError("cannot assign owner role")
+	}
+
+	// Update role
+	targetRole.Role = newRole
+	if err := s.userRepo.UpdateUserFranchiseRole(targetRole); err != nil {
+		return errors.NewInternalError("failed to update user role", err)
+	}
+
+	return nil
+}
+
 // Helper methods
 
 func (s *Service) buildFranchiseResponse(f *franchiseDomain.Franchise) *FranchiseResponse {

@@ -14,6 +14,7 @@ type Repository interface {
 	// Inventory Movements (Audit Trail)
 	CreateMovement(movement *InventoryMovement) error
 	FindMovementsByInventory(inventoryID uint, limit int) ([]*InventoryMovement, error)
+	FindMovementsByInventoryWithFilters(inventoryID uint, movementType *string, startDate *string, endDate *string, page, limit int) ([]*InventoryMovement, int64, error)
 	FindMovementsByReference(referenceType string, referenceID string) ([]*InventoryMovement, error)
 }
 

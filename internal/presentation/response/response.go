@@ -1,6 +1,7 @@
 package response
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/YasserCherfaoui/darween/pkg/errors"
@@ -15,8 +16,9 @@ type Response struct {
 }
 
 type ErrorInfo struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string      `json:"code"`
+	Message string      `json:"message"`
+	Issues  interface{} `json:"issues,omitempty"`
 }
 
 func Success(c *gin.Context, statusCode int, data interface{}) {
@@ -49,12 +51,26 @@ func Error(c *gin.Context, err error) {
 	}
 
 	statusCode := getHTTPStatusCode(appErr.Code)
+	errorInfo := &ErrorInfo{
+		Code:    appErr.Code,
+		Message: appErr.Message,
+	}
+
+	// Check if the message is JSON (for validation errors with multiple issues)
+	if appErr.Code == errors.CodeValidation {
+		var issuesData map[string]interface{}
+		if err := json.Unmarshal([]byte(appErr.Message), &issuesData); err == nil {
+			// Successfully parsed as JSON, extract issues
+			if issues, ok := issuesData["issues"]; ok {
+				errorInfo.Issues = issues
+				errorInfo.Message = "Validation failed. Please check the issues below."
+			}
+		}
+	}
+
 	c.JSON(statusCode, Response{
 		Success: false,
-		Error: &ErrorInfo{
-			Code:    appErr.Code,
-			Message: appErr.Message,
-		},
+		Error:   errorInfo,
 	})
 }
 

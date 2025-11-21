@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -687,5 +688,38 @@ func (h *POSHandler) GetFranchiseSalesReport(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, result)
+}
+
+// Receipt endpoints
+
+func (h *POSHandler) GenerateReceipt(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	saleID, err := strconv.ParseUint(c.Param("saleId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid sale id"))
+		return
+	}
+
+	pdfData, filename, err := h.posService.GenerateReceiptPDF(userID, uint(companyID), uint(saleID))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Set response headers for PDF download
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Data(http.StatusOK, "application/pdf", pdfData)
 }
 

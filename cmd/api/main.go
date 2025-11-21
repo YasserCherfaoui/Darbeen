@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/YasserCherfaoui/darween/internal/application/auth"
 	"github.com/YasserCherfaoui/darween/internal/application/company"
@@ -9,9 +10,12 @@ import (
 	"github.com/YasserCherfaoui/darween/internal/application/inventory"
 	"github.com/YasserCherfaoui/darween/internal/application/pos"
 	"github.com/YasserCherfaoui/darween/internal/application/product"
+	smtpconfigApp "github.com/YasserCherfaoui/darween/internal/application/smtpconfig"
 	"github.com/YasserCherfaoui/darween/internal/application/subscription"
 	"github.com/YasserCherfaoui/darween/internal/application/supplier"
 	"github.com/YasserCherfaoui/darween/internal/application/user"
+	warehousebillApp "github.com/YasserCherfaoui/darween/internal/application/warehousebill"
+	"github.com/YasserCherfaoui/darween/internal/infrastructure/mailing"
 	"github.com/YasserCherfaoui/darween/internal/infrastructure/persistence/migrations"
 	"github.com/YasserCherfaoui/darween/internal/infrastructure/persistence/postgres"
 	"github.com/YasserCherfaoui/darween/internal/infrastructure/security"
@@ -50,6 +54,9 @@ func main() {
 	supplierRepo := postgres.NewSupplierRepository(db)
 	franchiseRepo := postgres.NewFranchiseRepository(db)
 	inventoryRepo := postgres.NewInventoryRepository(db)
+	warehouseBillRepo := postgres.NewWarehouseBillRepository(db)
+	smtpConfigRepo := postgres.NewSMTPConfigRepository(db)
+	emailQueueRepo := postgres.NewEmailQueueRepository(db)
 	
 	// Initialize POS repositories
 	customerRepo := postgres.NewCustomerRepository(db)
@@ -69,10 +76,13 @@ func main() {
 	companyService := company.NewService(companyRepo, userRepo, subscriptionRepo)
 	subscriptionService := subscription.NewService(subscriptionRepo, userRepo)
 	productService := product.NewService(productRepo, userRepo, supplierRepo)
-	supplierService := supplier.NewService(supplierRepo, userRepo)
+	supplierService := supplier.NewService(supplierRepo, userRepo, inventoryRepo, productRepo, db)
 	inventoryService := inventory.NewService(inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo)
 	franchiseService := franchise.NewService(franchiseRepo, inventoryRepo, companyRepo, userRepo, productRepo)
 	posService := pos.NewService(customerRepo, saleRepo, saleItemRepo, paymentRepo, cashDrawerRepo, cashDrawerTransactionRepo, refundRepo, userRepo, inventoryRepo, inventoryRepo, productRepo, db)
+	warehouseBillService := warehousebillApp.NewService(warehouseBillRepo, inventoryRepo, companyRepo, franchiseRepo, userRepo, productRepo, db)
+	smtpConfigService := smtpconfigApp.NewService(smtpConfigRepo, userRepo)
+	mailingService := mailing.NewMailingService(smtpConfigRepo, emailQueueRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -84,9 +94,16 @@ func main() {
 	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 	franchiseHandler := handler.NewFranchiseHandler(franchiseService)
 	posHandler := handler.NewPOSHandler(posService)
+	warehouseBillHandler := handler.NewWarehouseBillHandler(warehouseBillService)
+	smtpConfigHandler := handler.NewSMTPConfigHandler(smtpConfigService)
 
 	// Initialize router
-	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, posHandler, jwtManager)
+	r := router.NewRouter(authHandler, userHandler, companyHandler, subscriptionHandler, productHandler, supplierHandler, inventoryHandler, franchiseHandler, posHandler, warehouseBillHandler, smtpConfigHandler, jwtManager)
+
+	// Start email queue worker (processes emails in background)
+	emailWorker := mailing.NewEmailQueueWorker(mailingService, 30*time.Second)
+	emailWorker.Start()
+	defer emailWorker.Stop()
 
 	// Create Gin engine
 	engine := gin.Default()

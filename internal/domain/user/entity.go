@@ -85,3 +85,23 @@ func (r Role) IsValid() bool {
 	}
 	return false
 }
+
+// HasPermission checks if the role has at least the minimum required permission
+// Role hierarchy: Owner > Admin > Manager > Employee
+func (r Role) HasPermission(minimumRole Role) bool {
+	roleHierarchy := map[Role]int{
+		RoleEmployee: 1,
+		RoleManager:  2,
+		RoleAdmin:    3,
+		RoleOwner:    4,
+	}
+	
+	userLevel, userExists := roleHierarchy[r]
+	minLevel, minExists := roleHierarchy[minimumRole]
+	
+	if !userExists || !minExists {
+		return false
+	}
+	
+	return userLevel >= minLevel
+}

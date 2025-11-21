@@ -71,7 +71,30 @@ type InventoryMovementResponse struct {
 
 type InventoryMovementListResponse struct {
 	Movements []*InventoryMovementResponse `json:"movements"`
-	Total     int                          `json:"total"`
+	Total     int64                        `json:"total"`
+	Page      int                          `json:"page"`
+	Limit     int                          `json:"limit"`
+	TotalPages int                         `json:"total_pages"`
+}
+
+type MovementFilterRequest struct {
+	Page         int    `form:"page" binding:"min=1"`
+	Limit        int    `form:"limit" binding:"min=1,max=100"`
+	MovementType string `form:"movement_type"`
+	StartDate    string `form:"start_date"`
+	EndDate      string `form:"end_date"`
+}
+
+func (mfr *MovementFilterRequest) GetDefaults() {
+	if mfr.Page < 1 {
+		mfr.Page = 1
+	}
+	if mfr.Limit < 1 {
+		mfr.Limit = 20
+	}
+	if mfr.Limit > 100 {
+		mfr.Limit = 100
+	}
 }
 
 

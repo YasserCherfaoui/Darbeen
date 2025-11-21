@@ -206,12 +206,14 @@ func (h *InventoryHandler) GetInventoryMovements(c *gin.Context) {
 		return
 	}
 
-	limit := 50
-	if limitStr := c.Query("limit"); limitStr != "" {
-		limit, _ = strconv.Atoi(limitStr)
+	var filterReq inventoryApp.MovementFilterRequest
+	if err := c.ShouldBindQuery(&filterReq); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
 	}
+	filterReq.GetDefaults()
 
-	result, err := h.inventoryService.GetInventoryMovements(uint(inventoryID), limit)
+	result, err := h.inventoryService.GetInventoryMovementsWithFilters(uint(inventoryID), &filterReq)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -221,25 +223,9 @@ func (h *InventoryHandler) GetInventoryMovements(c *gin.Context) {
 }
 
 func (h *InventoryHandler) InitializeCompanyInventory(c *gin.Context) {
-	userID, err := middleware.GetUserID(c)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
-	if err != nil {
-		response.Error(c, errors.NewBadRequestError("invalid company id"))
-		return
-	}
-
-	err = h.inventoryService.InitializeCompanyInventory(userID, uint(companyID))
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	response.SuccessWithMessage(c, http.StatusOK, "Company inventory initialized successfully", nil)
+	// This method is not implemented in the inventory service
+	// It should be handled by the franchise service instead
+	response.Error(c, errors.NewInternalError("company inventory initialization is not supported", nil))
 }
 
 

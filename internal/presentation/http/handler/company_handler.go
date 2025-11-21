@@ -158,3 +158,59 @@ func (h *CompanyHandler) RemoveUserFromCompany(c *gin.Context) {
 
 	response.SuccessWithMessage(c, http.StatusOK, "User removed from company successfully", nil)
 }
+
+func (h *CompanyHandler) ListCompanyUsers(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	result, err := h.companyService.GetCompanyUsers(userID, uint(companyID))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *CompanyHandler) UpdateUserRole(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	companyID, err := strconv.ParseUint(c.Param("companyId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid company id"))
+		return
+	}
+
+	targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid user id"))
+		return
+	}
+
+	var req companyApp.UpdateUserRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	err = h.companyService.UpdateUserRoleInCompany(userID, uint(companyID), uint(targetUserID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, "User role updated successfully", nil)
+}

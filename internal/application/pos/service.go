@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/YasserCherfaoui/darween/internal/domain/company"
+	"github.com/YasserCherfaoui/darween/internal/domain/franchise"
 	"github.com/YasserCherfaoui/darween/internal/domain/inventory"
 	"github.com/YasserCherfaoui/darween/internal/domain/pos"
 	"github.com/YasserCherfaoui/darween/internal/domain/product"
 	"github.com/YasserCherfaoui/darween/internal/domain/user"
+	"github.com/YasserCherfaoui/darween/internal/infrastructure/receipt"
 	"github.com/YasserCherfaoui/darween/pkg/errors"
 	"gorm.io/gorm"
 )
@@ -234,7 +237,7 @@ func (s *Service) CreateSale(userID, companyID uint, req *CreateSaleRequest) (*S
 	saleItems := make([]pos.SaleItem, len(req.Items))
 	for i, itemReq := range req.Items {
 		// Validate product variant
-		variant, err := s.productVariantRepo.FindVariantByID(itemReq.ProductVariantID)
+		variant, err := s.productVariantRepo.FindProductVariantByID(itemReq.ProductVariantID)
 		if err != nil {
 			tx.Rollback()
 			return nil, errors.NewNotFoundError(fmt.Sprintf("product variant %d not found", itemReq.ProductVariantID))
@@ -263,7 +266,7 @@ func (s *Service) CreateSale(userID, companyID uint, req *CreateSaleRequest) (*S
 		saleItems[i] = saleItem
 	}
 
-	// Calculate sale totals
+	// Calculate sale totals (temporarily set items for calculation)
 	sale.Items = saleItems
 	sale.CalculateTotals()
 	sale.ReceiptNumber = GenerateReceiptNumber(companyID, 0) // Will update after getting ID
@@ -273,22 +276,25 @@ func (s *Service) CreateSale(userID, companyID uint, req *CreateSaleRequest) (*S
 		return nil, errors.NewValidationError("invalid sale data")
 	}
 
-	// Create sale in database
-	if err := tx.Create(sale).Error; err != nil {
+	// Create sale in database without items to avoid GORM auto-creating them
+	// We'll create items separately after getting the sale ID
+	saleWithoutItems := *sale
+	saleWithoutItems.Items = nil // Clear items to prevent GORM from creating them
+	if err := tx.Create(&saleWithoutItems).Error; err != nil {
 		tx.Rollback()
 		return nil, errors.NewInternalError("failed to create sale", err)
 	}
 
 	// Update receipt number with actual sale ID
-	sale.ReceiptNumber = GenerateReceiptNumber(companyID, sale.ID)
-	if err := tx.Save(sale).Error; err != nil {
+	saleWithoutItems.ReceiptNumber = GenerateReceiptNumber(companyID, saleWithoutItems.ID)
+	if err := tx.Save(&saleWithoutItems).Error; err != nil {
 		tx.Rollback()
 		return nil, errors.NewInternalError("failed to update receipt number", err)
 	}
 
-	// Update sale item IDs
+	// Update sale item IDs and create sale items
 	for i := range saleItems {
-		saleItems[i].SaleID = sale.ID
+		saleItems[i].SaleID = saleWithoutItems.ID
 	}
 
 	// Create sale items
@@ -296,6 +302,10 @@ func (s *Service) CreateSale(userID, companyID uint, req *CreateSaleRequest) (*S
 		tx.Rollback()
 		return nil, errors.NewInternalError("failed to create sale items", err)
 	}
+
+	// Update sale reference for later use
+	sale.ID = saleWithoutItems.ID
+	sale.ReceiptNumber = saleWithoutItems.ReceiptNumber
 
 	// Deduct inventory and create movements
 	for _, item := range saleItems {
@@ -343,8 +353,8 @@ func (s *Service) CreateSale(userID, companyID uint, req *CreateSaleRequest) (*S
 	}
 
 	// Mark sale as completed
-	sale.Complete()
-	if err := tx.Save(sale).Error; err != nil {
+	saleWithoutItems.Complete()
+	if err := tx.Save(&saleWithoutItems).Error; err != nil {
 		tx.Rollback()
 		return nil, errors.NewInternalError("failed to complete sale", err)
 	}
@@ -378,7 +388,39 @@ func (s *Service) GetSaleByID(userID, companyID, saleID uint) (*SaleResponse, er
 		return nil, errors.NewForbiddenError("access denied to this sale")
 	}
 
-	return ToSaleResponse(sale), nil
+	// Fetch product and variant details for each item
+	itemDetails := make(map[uint]struct {
+		productName string
+		variantName string
+		variantSKU  string
+	})
+
+	for _, item := range sale.Items {
+		if _, exists := itemDetails[item.ProductVariantID]; exists {
+			continue // Already fetched
+		}
+
+		variant, err := s.productVariantRepo.FindProductVariantByID(item.ProductVariantID)
+		if err == nil && variant != nil {
+			var productName string
+			product, err := s.productVariantRepo.FindProductByID(variant.ProductID)
+			if err == nil && product != nil {
+				productName = product.Name
+			}
+
+			itemDetails[item.ProductVariantID] = struct {
+				productName string
+				variantName string
+				variantSKU  string
+			}{
+				productName: productName,
+				variantName: variant.Name,
+				variantSKU:  variant.SKU,
+			}
+		}
+	}
+
+	return ToSaleResponseWithDetails(sale, itemDetails), nil
 }
 
 func (s *Service) ListSales(userID, companyID uint, franchiseID *uint, page, limit int) (*PaginatedResponse, error) {
@@ -876,15 +918,87 @@ func (s *Service) GetSalesReport(userID, companyID uint, req *SalesReportRequest
 	return ToSalesReportResponse(data), nil
 }
 
+// Receipt Generation
+
+func (s *Service) GenerateReceiptPDF(userID, companyID, saleID uint) ([]byte, string, error) {
+	// Check user authorization
+	if err := s.checkUserCompanyAccess(userID, companyID, user.RoleEmployee); err != nil {
+		return nil, "", err
+	}
+
+	// Fetch sale with items, payments, and customer
+	sale, err := s.saleRepo.FindByID(saleID)
+	if err != nil {
+		return nil, "", errors.NewNotFoundError("sale not found")
+	}
+
+	if sale.CompanyID != companyID {
+		return nil, "", errors.NewForbiddenError("access denied to this sale")
+	}
+
+	// Fetch company info
+	var company company.Company
+	if err := s.db.First(&company, companyID).Error; err != nil {
+		return nil, "", errors.NewNotFoundError("company not found")
+	}
+
+	// Fetch franchise info if applicable
+	var franchiseName string
+	if sale.FranchiseID != nil {
+		var franchise franchise.Franchise
+		if err := s.db.First(&franchise, *sale.FranchiseID).Error; err == nil {
+			franchiseName = franchise.Name
+		}
+	}
+
+	// Fetch product variants for items
+	productVariantMap := make(map[uint]receipt.ProductVariantInfo)
+	for _, item := range sale.Items {
+		variant, err := s.productVariantRepo.FindProductVariantByID(item.ProductVariantID)
+		if err == nil {
+			// Get product name using ProductID from variant
+			product, err := s.productVariantRepo.FindProductByID(variant.ProductID)
+			if err == nil {
+				itemName := fmt.Sprintf("%s - %s", product.Name, variant.Name)
+				productVariantMap[item.ProductVariantID] = receipt.ProductVariantInfo{
+					Name: itemName,
+					SKU:  variant.SKU,
+				}
+			} else {
+				// Fallback to variant name only
+				productVariantMap[item.ProductVariantID] = receipt.ProductVariantInfo{
+					Name: variant.Name,
+					SKU:  variant.SKU,
+				}
+			}
+		}
+	}
+
+	// Convert sale to receipt data
+	receiptData := receipt.ConvertSaleToReceiptData(sale, company.Name, franchiseName, productVariantMap)
+
+	// Generate PDF
+	generator := receipt.NewReceiptGenerator()
+	pdfBytes, err := generator.GenerateReceipt(receiptData)
+	if err != nil {
+		return nil, "", errors.NewInternalError("failed to generate receipt PDF", err)
+	}
+
+	// Generate filename
+	filename := fmt.Sprintf("receipt_%s.pdf", sale.ReceiptNumber)
+
+	return pdfBytes, filename, nil
+}
+
 // Helper methods
 
 func (s *Service) checkUserCompanyAccess(userID, companyID uint, minimumRole user.Role) error {
-	role, err := s.userRepo.GetUserCompanyRole(userID, companyID)
+	ucr, err := s.userRepo.FindUserRoleInCompany(userID, companyID)
 	if err != nil {
 		return errors.NewForbiddenError("access denied to this company")
 	}
 
-	if !role.HasPermission(minimumRole) {
+	if !ucr.Role.HasPermission(minimumRole) {
 		return errors.NewForbiddenError("insufficient permissions")
 	}
 
@@ -892,12 +1006,12 @@ func (s *Service) checkUserCompanyAccess(userID, companyID uint, minimumRole use
 }
 
 func (s *Service) checkUserFranchiseAccess(userID, franchiseID uint, minimumRole user.Role) error {
-	role, err := s.userRepo.GetUserFranchiseRole(userID, franchiseID)
+	ufr, err := s.userRepo.FindUserRoleInFranchise(userID, franchiseID)
 	if err != nil {
 		return errors.NewForbiddenError("access denied to this franchise")
 	}
 
-	if !role.HasPermission(minimumRole) {
+	if !ufr.Role.HasPermission(minimumRole) {
 		return errors.NewForbiddenError("insufficient permissions")
 	}
 
@@ -907,4 +1021,3 @@ func (s *Service) checkUserFranchiseAccess(userID, franchiseID uint, minimumRole
 func stringPtr(s string) *string {
 	return &s
 }
-

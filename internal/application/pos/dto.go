@@ -91,9 +91,13 @@ type SaleItemResponse struct {
 	SubTotal         float64   `json:"sub_total"`
 	TotalAmount      float64   `json:"total_amount"`
 	CreatedAt        time.Time `json:"created_at"`
+	// Product and variant details
+	ProductName      *string   `json:"product_name,omitempty"`
+	VariantName      *string   `json:"variant_name,omitempty"`
+	VariantSKU       *string   `json:"variant_sku,omitempty"`
 }
 
-func ToSaleItemResponse(item *pos.SaleItem) *SaleItemResponse {
+func ToSaleItemResponse(item *pos.SaleItem, productName, variantName, variantSKU *string) *SaleItemResponse {
 	return &SaleItemResponse{
 		ID:               item.ID,
 		SaleID:           item.SaleID,
@@ -104,31 +108,42 @@ func ToSaleItemResponse(item *pos.SaleItem) *SaleItemResponse {
 		SubTotal:         item.SubTotal,
 		TotalAmount:      item.TotalAmount,
 		CreatedAt:        item.CreatedAt,
+		ProductName:      productName,
+		VariantName:      variantName,
+		VariantSKU:       variantSKU,
 	}
 }
 
 type SaleResponse struct {
-	ID             uint                `json:"id"`
-	CompanyID      uint                `json:"company_id"`
-	FranchiseID    *uint               `json:"franchise_id"`
-	CustomerID     *uint               `json:"customer_id"`
-	ReceiptNumber  string              `json:"receipt_number"`
-	SubTotal       float64             `json:"sub_total"`
-	TaxAmount      float64             `json:"tax_amount"`
-	DiscountAmount float64             `json:"discount_amount"`
-	TotalAmount    float64             `json:"total_amount"`
-	PaymentStatus  pos.PaymentStatus   `json:"payment_status"`
-	SaleStatus     pos.SaleStatus      `json:"sale_status"`
-	Notes          string              `json:"notes"`
-	CreatedByID    uint                `json:"created_by_id"`
-	CreatedAt      time.Time           `json:"created_at"`
-	UpdatedAt      time.Time           `json:"updated_at"`
-	Items          []SaleItemResponse  `json:"items,omitempty"`
-	Payments       []PaymentResponse   `json:"payments,omitempty"`
-	Customer       *CustomerResponse   `json:"customer,omitempty"`
+	ID             uint               `json:"id"`
+	CompanyID      uint               `json:"company_id"`
+	FranchiseID    *uint              `json:"franchise_id"`
+	CustomerID     *uint              `json:"customer_id"`
+	ReceiptNumber  string             `json:"receipt_number"`
+	SubTotal       float64            `json:"sub_total"`
+	TaxAmount      float64            `json:"tax_amount"`
+	DiscountAmount float64            `json:"discount_amount"`
+	TotalAmount    float64            `json:"total_amount"`
+	PaymentStatus  pos.PaymentStatus  `json:"payment_status"`
+	SaleStatus     pos.SaleStatus     `json:"sale_status"`
+	Notes          string             `json:"notes"`
+	CreatedByID    uint               `json:"created_by_id"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	Items          []SaleItemResponse `json:"items,omitempty"`
+	Payments       []PaymentResponse  `json:"payments,omitempty"`
+	Customer       *CustomerResponse  `json:"customer,omitempty"`
 }
 
 func ToSaleResponse(sale *pos.Sale) *SaleResponse {
+	return ToSaleResponseWithDetails(sale, nil)
+}
+
+func ToSaleResponseWithDetails(sale *pos.Sale, itemDetails map[uint]struct {
+	productName string
+	variantName string
+	variantSKU  string
+}) *SaleResponse {
 	response := &SaleResponse{
 		ID:             sale.ID,
 		CompanyID:      sale.CompanyID,
@@ -150,7 +165,21 @@ func ToSaleResponse(sale *pos.Sale) *SaleResponse {
 	if len(sale.Items) > 0 {
 		response.Items = make([]SaleItemResponse, len(sale.Items))
 		for i, item := range sale.Items {
-			response.Items[i] = *ToSaleItemResponse(&item)
+			var productName, variantName, variantSKU *string
+			if itemDetails != nil {
+				if details, exists := itemDetails[item.ProductVariantID]; exists {
+					if details.productName != "" {
+						productName = &details.productName
+					}
+					if details.variantName != "" {
+						variantName = &details.variantName
+					}
+					if details.variantSKU != "" {
+						variantSKU = &details.variantSKU
+					}
+				}
+			}
+			response.Items[i] = *ToSaleItemResponse(&item, productName, variantName, variantSKU)
 		}
 	}
 
@@ -178,14 +207,14 @@ type AddPaymentRequest struct {
 }
 
 type PaymentResponse struct {
-	ID            uint                             `json:"id"`
-	SaleID        uint                             `json:"sale_id"`
-	PaymentMethod pos.PaymentMethod                `json:"payment_method"`
-	Amount        float64                          `json:"amount"`
-	PaymentStatus pos.PaymentTransactionStatus     `json:"payment_status"`
-	Reference     string                           `json:"reference"`
-	Notes         string                           `json:"notes"`
-	CreatedAt     time.Time                        `json:"created_at"`
+	ID            uint                         `json:"id"`
+	SaleID        uint                         `json:"sale_id"`
+	PaymentMethod pos.PaymentMethod            `json:"payment_method"`
+	Amount        float64                      `json:"amount"`
+	PaymentStatus pos.PaymentTransactionStatus `json:"payment_status"`
+	Reference     string                       `json:"reference"`
+	Notes         string                       `json:"notes"`
+	CreatedAt     time.Time                    `json:"created_at"`
 }
 
 func ToPaymentResponse(payment *pos.Payment) *PaymentResponse {
@@ -215,13 +244,13 @@ type CloseCashDrawerRequest struct {
 }
 
 type CashDrawerTransactionResponse struct {
-	ID              uint                              `json:"id"`
-	CashDrawerID    uint                              `json:"cash_drawer_id"`
-	TransactionType pos.CashDrawerTransactionType     `json:"transaction_type"`
-	Amount          float64                           `json:"amount"`
-	SaleID          *uint                             `json:"sale_id"`
-	Notes           string                            `json:"notes"`
-	CreatedAt       time.Time                         `json:"created_at"`
+	ID              uint                          `json:"id"`
+	CashDrawerID    uint                          `json:"cash_drawer_id"`
+	TransactionType pos.CashDrawerTransactionType `json:"transaction_type"`
+	Amount          float64                       `json:"amount"`
+	SaleID          *uint                         `json:"sale_id"`
+	Notes           string                        `json:"notes"`
+	CreatedAt       time.Time                     `json:"created_at"`
 }
 
 func ToCashDrawerTransactionResponse(transaction *pos.CashDrawerTransaction) *CashDrawerTransactionResponse {
@@ -397,17 +426,17 @@ func NewPaginatedResponse(data interface{}, total int64, page, limit int) *Pagin
 // Receipt DTOs
 
 type ReceiptResponse struct {
-	ReceiptNumber  string              `json:"receipt_number"`
-	Date           time.Time           `json:"date"`
-	CompanyName    string              `json:"company_name"`
-	FranchiseName  string              `json:"franchise_name,omitempty"`
-	CustomerName   string              `json:"customer_name,omitempty"`
-	Items          []SaleItemResponse  `json:"items"`
-	SubTotal       float64             `json:"sub_total"`
-	TaxAmount      float64             `json:"tax_amount"`
-	DiscountAmount float64             `json:"discount_amount"`
-	TotalAmount    float64             `json:"total_amount"`
-	Payments       []PaymentResponse   `json:"payments"`
+	ReceiptNumber  string             `json:"receipt_number"`
+	Date           time.Time          `json:"date"`
+	CompanyName    string             `json:"company_name"`
+	FranchiseName  string             `json:"franchise_name,omitempty"`
+	CustomerName   string             `json:"customer_name,omitempty"`
+	Items          []SaleItemResponse `json:"items"`
+	SubTotal       float64            `json:"sub_total"`
+	TaxAmount      float64            `json:"tax_amount"`
+	DiscountAmount float64            `json:"discount_amount"`
+	TotalAmount    float64            `json:"total_amount"`
+	Payments       []PaymentResponse  `json:"payments"`
 }
 
 // Generate receipt number
@@ -415,4 +444,3 @@ func GenerateReceiptNumber(companyID uint, saleID uint) string {
 	timestamp := time.Now().Format("20060102")
 	return fmt.Sprintf("RCP-%d-%s-%d", companyID, timestamp, saleID)
 }
-

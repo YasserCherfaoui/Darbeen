@@ -13,6 +13,7 @@ type Repository interface {
 	FindUserRoleInCompany(userID, companyID uint) (*UserCompanyRole, error)
 	DeleteUserCompanyRole(userID, companyID uint) error
 	FindCompanyUsersByCompanyID(companyID uint) ([]*UserCompanyRole, error)
+	UpdateUserCompanyRole(ucr *UserCompanyRole) error
 
 	// User-Franchise-Role operations
 	CreateUserFranchiseRole(ufr *UserFranchiseRole) error
@@ -20,4 +21,5 @@ type Repository interface {
 	FindUserRoleInFranchise(userID, franchiseID uint) (*UserFranchiseRole, error)
 	DeleteUserFranchiseRole(userID, franchiseID uint) error
 	FindFranchiseUsersByFranchiseID(franchiseID uint) ([]*UserFranchiseRole, error)
+	UpdateUserFranchiseRole(ufr *UserFranchiseRole) error
 }

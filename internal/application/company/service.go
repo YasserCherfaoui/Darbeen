@@ -223,3 +223,84 @@ func (s *Service) RemoveUserFromCompany(requestUserID, companyID, targetUserID u
 
 	return nil
 }
+
+func (s *Service) GetCompanyUsers(requestUserID, companyID uint) (*ListCompanyUsersResponse, error) {
+	// Check if requester has at least manager role
+	requesterRole, err := s.userRepo.FindUserRoleInCompany(requestUserID, companyID)
+	if err != nil {
+		return nil, errors.NewForbiddenError("you don't have access to this company")
+	}
+
+	if !requesterRole.Role.HasPermission(user.RoleManager) {
+		return nil, errors.NewForbiddenError("you need at least manager role to view company users")
+	}
+
+	// Get all users in the company
+	roles, err := s.userRepo.FindCompanyUsersByCompanyID(companyID)
+	if err != nil {
+		return nil, errors.NewInternalError("failed to fetch company users", err)
+	}
+
+	var users []*UserWithRoleResponse
+	for _, role := range roles {
+		u, err := s.userRepo.FindByID(role.UserID)
+		if err != nil {
+			continue // Skip if user not found
+		}
+
+		users = append(users, &UserWithRoleResponse{
+			ID:        u.ID,
+			Email:     u.Email,
+			FirstName: u.FirstName,
+			LastName:  u.LastName,
+			Role:      role.Role.String(),
+			IsActive:  role.IsActive,
+		})
+	}
+
+	return &ListCompanyUsersResponse{
+		Users: users,
+	}, nil
+}
+
+func (s *Service) UpdateUserRoleInCompany(requestUserID, companyID, targetUserID uint, req *UpdateUserRoleRequest) error {
+	// Check if requester has permission
+	requesterRole, err := s.userRepo.FindUserRoleInCompany(requestUserID, companyID)
+	if err != nil {
+		return errors.NewForbiddenError("you don't have access to this company")
+	}
+
+	if requesterRole.Role != user.RoleOwner && requesterRole.Role != user.RoleAdmin {
+		return errors.NewForbiddenError("only owners and admins can update user roles")
+	}
+
+	// Validate new role
+	newRole := user.Role(req.Role)
+	if !newRole.IsValid() {
+		return errors.NewValidationError("invalid role")
+	}
+
+	// Check if target user exists in company
+	targetRole, err := s.userRepo.FindUserRoleInCompany(targetUserID, companyID)
+	if err != nil {
+		return errors.NewNotFoundError("user not found in company")
+	}
+
+	// Cannot change owner role
+	if targetRole.Role == user.RoleOwner {
+		return errors.NewForbiddenError("cannot change owner role")
+	}
+
+	// Cannot assign owner role (only through company creation)
+	if newRole == user.RoleOwner {
+		return errors.NewForbiddenError("cannot assign owner role")
+	}
+
+	// Update role
+	targetRole.Role = newRole
+	if err := s.userRepo.UpdateUserCompanyRole(targetRole); err != nil {
+		return errors.NewInternalError("failed to update user role", err)
+	}
+
+	return nil
+}

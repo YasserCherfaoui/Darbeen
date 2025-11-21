@@ -91,6 +91,37 @@ func (r *inventoryRepository) FindMovementsByInventory(inventoryID uint, limit i
 	return movements, err
 }
 
+func (r *inventoryRepository) FindMovementsByInventoryWithFilters(inventoryID uint, movementType *string, startDate *string, endDate *string, page, limit int) ([]*inventory.InventoryMovement, int64, error) {
+	var movements []*inventory.InventoryMovement
+	var total int64
+
+	query := r.db.Model(&inventory.InventoryMovement{}).Where("inventory_id = ?", inventoryID)
+
+	// Apply movement type filter
+	if movementType != nil && *movementType != "" {
+		query = query.Where("LOWER(movement_type) = LOWER(?)", *movementType)
+	}
+
+	// Apply date range filter
+	if startDate != nil && *startDate != "" {
+		query = query.Where("created_at >= ?", *startDate)
+	}
+	if endDate != nil && *endDate != "" {
+		query = query.Where("created_at <= ?", *endDate)
+	}
+
+	// Get total count
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Apply pagination and ordering
+	offset := (page - 1) * limit
+	err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&movements).Error
+
+	return movements, total, err
+}
+
 func (r *inventoryRepository) FindMovementsByReference(referenceType string, referenceID string) ([]*inventory.InventoryMovement, error) {
 	var movements []*inventory.InventoryMovement
 	err := r.db.

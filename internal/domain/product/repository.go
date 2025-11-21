@@ -18,6 +18,7 @@ type Repository interface {
 	FindProductVariantsByProductID(productID uint) ([]*ProductVariant, error)
 	UpdateProductVariant(variant *ProductVariant) error
 	SoftDeleteProductVariant(id uint) error
+	SearchVariantsByCompany(companyID uint, query string, limit int) ([]*ProductVariant, error)
 
 	// Stock operations
 	UpdateVariantStock(variantID uint, newStock int) error

@@ -334,65 +334,63 @@ func (s *Service) GetInventoryMovements(inventoryID uint, limit int) ([]*Invento
 	return result, nil
 }
 
-func (s *Service) InitializeCompanyInventory(userID, companyID uint) error {
-	// Verify company exists and user has access
-	_, err := s.companyRepo.FindByID(companyID)
+func (s *Service) GetInventoryMovementsWithFilters(inventoryID uint, req *MovementFilterRequest) (*InventoryMovementListResponse, error) {
+	var movementType *string
+	if req.MovementType != "" {
+		movementType = &req.MovementType
+	}
+
+	var startDate *string
+	if req.StartDate != "" {
+		startDate = &req.StartDate
+	}
+
+	var endDate *string
+	if req.EndDate != "" {
+		endDate = &req.EndDate
+	}
+
+	movements, total, err := s.inventoryRepo.FindMovementsByInventoryWithFilters(
+		inventoryID,
+		movementType,
+		startDate,
+		endDate,
+		req.Page,
+		req.Limit,
+	)
 	if err != nil {
-		return errors.NewNotFoundError("company not found")
+		return nil, errors.NewInternalError("failed to fetch movements", err)
 	}
 
-	role, err := s.userRepo.FindUserRoleInCompany(userID, companyID)
-	if err != nil || (role.Role != userDomain.RoleOwner && role.Role != userDomain.RoleAdmin) {
-		return errors.NewForbiddenError("only owners and admins can initialize company inventory")
+	result := make([]*InventoryMovementResponse, 0, len(movements))
+	for _, m := range movements {
+		result = append(result, &InventoryMovementResponse{
+			ID:            m.ID,
+			InventoryID:   m.InventoryID,
+			MovementType:  string(m.MovementType),
+			Quantity:      m.Quantity,
+			PreviousStock: m.PreviousStock,
+			NewStock:      m.NewStock,
+			ReferenceType: getStringValue(m.ReferenceType),
+			ReferenceID:   getStringValue(m.ReferenceID),
+			Notes:         getStringValue(m.Notes),
+			CreatedByID:   m.CreatedByID,
+			CreatedAt:     m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
 	}
 
-	// Get all products from company
-	products, _, err := s.productRepo.FindProductsByCompanyID(companyID, 1, 1000)
-	if err != nil {
-		return errors.NewInternalError("failed to fetch products", err)
+	totalPages := int(total) / req.Limit
+	if int(total)%req.Limit > 0 {
+		totalPages++
 	}
 
-	// Create inventory records for all variants
-	for _, product := range products {
-		variants, err := s.productRepo.FindProductVariantsByProductID(product.ID)
-		if err != nil {
-			continue
-		}
-
-		for _, variant := range variants {
-			// Check if inventory already exists
-			existing, _ := s.inventoryRepo.FindByVariantAndCompany(variant.ID, companyID)
-			if existing == nil {
-				newInventory := &inventory.Inventory{
-					ProductVariantID: variant.ID,
-					CompanyID:        &companyID,
-					FranchiseID:      nil,
-					Stock:            0,
-					ReservedStock:    0,
-					IsActive:         true,
-				}
-
-				if err := s.inventoryRepo.Create(newInventory); err != nil {
-					// Log error but continue
-					continue
-				}
-
-				// Log initial movement
-				movement := &inventory.InventoryMovement{
-					InventoryID:   newInventory.ID,
-					MovementType:  inventory.MovementTypeAdjustment,
-					Quantity:      0,
-					PreviousStock: 0,
-					NewStock:      0,
-					Notes:         stringPtr("Initialized from catalog"),
-					CreatedByID:   userID,
-				}
-				s.inventoryRepo.CreateMovement(movement)
-			}
-		}
-	}
-
-	return nil
+	return &InventoryMovementListResponse{
+		Movements:  result,
+		Total:      total,
+		Page:       req.Page,
+		Limit:      req.Limit,
+		TotalPages: totalPages,
+	}, nil
 }
 
 // Helper methods
@@ -435,24 +433,24 @@ func (s *Service) buildInventoryResponse(inv *inventory.Inventory) (*InventoryRe
 		UpdatedAt:        inv.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	// Load and populate variant details
+	// Load and populate variant details from productRepo
 	variant, err := s.productRepo.FindProductVariantByID(inv.ProductVariantID)
-	if err == nil {
+	if err == nil && variant != nil {
 		response.VariantName = variant.Name
 		response.VariantSKU = variant.SKU
-		response.ProductID = variant.ProductID
-
-		// Load and populate product details
+		
+		// Load product details
 		product, err := s.productRepo.FindProductByID(variant.ProductID)
-		if err == nil {
+		if err == nil && product != nil {
+			response.ProductID = product.ID
 			response.ProductName = product.Name
 		}
 	}
 
-	// Load and populate franchise details if franchise inventory
+	// Load franchise details if franchise inventory
 	if inv.FranchiseID != nil {
 		franchise, err := s.franchiseRepo.FindByID(*inv.FranchiseID)
-		if err == nil {
+		if err == nil && franchise != nil {
 			response.FranchiseName = franchise.Name
 		}
 	}

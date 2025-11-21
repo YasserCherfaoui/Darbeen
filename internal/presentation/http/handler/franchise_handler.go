@@ -305,6 +305,62 @@ func (h *FranchiseHandler) BulkSetFranchisePricing(c *gin.Context) {
 	response.SuccessWithMessage(c, http.StatusOK, "Franchise pricing set successfully", result)
 }
 
+func (h *FranchiseHandler) ListFranchiseUsers(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	franchiseID, err := strconv.ParseUint(c.Param("franchiseId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid franchise id"))
+		return
+	}
+
+	result, err := h.franchiseService.GetFranchiseUsers(userID, uint(franchiseID))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, result)
+}
+
+func (h *FranchiseHandler) UpdateUserRole(c *gin.Context) {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	franchiseID, err := strconv.ParseUint(c.Param("franchiseId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid franchise id"))
+		return
+	}
+
+	targetUserID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+	if err != nil {
+		response.Error(c, errors.NewBadRequestError("invalid user id"))
+		return
+	}
+
+	var req franchiseApp.UpdateUserRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errors.NewValidationError(err.Error()))
+		return
+	}
+
+	err = h.franchiseService.UpdateUserRoleInFranchise(userID, uint(franchiseID), uint(targetUserID), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.SuccessWithMessage(c, http.StatusOK, "User role updated successfully", nil)
+}
+
 
 
 
